@@ -1,0 +1,22 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = "postgresql://admin:admin123@localhost:5332/postgres?schema=public"
+ // directUrl = env("DIRECT_URL")
+
+}
+
+model File {
+  id String @id @default(cuid())
+
+  bucket String?
+  fileName String?
+  originalName String?
+  size Float?
+  url String?
+
+  createdAt DateTime @default(now())
+}
