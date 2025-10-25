@@ -9,13 +9,13 @@ export const FILE_NUMBER_LIMIT = 10;
  * @param formData form data with files to upload
  * @returns
  */
-export const getPresignedUrls = async (files: ShortFileProp[]) => {
+export const getPresignedUrls = async (files: ShortFileProp[], folderName?:string) => {
   const response = await fetch("/api/s3/presigned", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(files),
+    body: JSON.stringify({ files, folderName }),
   });
   return (await response.json()) as PresignedUrlProp[];
 };

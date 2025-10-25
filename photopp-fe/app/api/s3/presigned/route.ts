@@ -1,5 +1,5 @@
 import type { ShortFileProp, PresignedUrlProp } from "../../../_shared/server/minio";
-import { createPresignedUrlToUpload } from "../../../_shared/server/minio";
+import { createPresignedUrlToDownload, createPresignedUrlToUpload } from "../../../_shared/server/minio";
 import { nanoid } from "nanoid";
 import { NextResponse } from "next/server";
 import prisma from "../../../_shared/server/prisma";
@@ -10,8 +10,8 @@ const expiry = 60 * 60; // 1 hour
 export async function POST(req: Request) {
   try {
     // get the files from the request body
-    const body = await req.json();
-    const files = body as ShortFileProp[];
+    const { files, folderName } = await req.json() as { files: ShortFileProp[], folderName?: string };
+
     console.log({ files });
 
     if (!files?.length) {
@@ -26,17 +26,19 @@ export async function POST(req: Request) {
         // loop through the files
         files.map(async (file) => {
           const fileName = nanoid(12);
+          const pathInBucket = folderName ? `${folderName}/${fileName}` : fileName;
+
 
           // get presigned url using s3 sdk
           const url = await createPresignedUrlToUpload({
             bucketName,
-            fileName,
+            fileName: pathInBucket,
             expiry,
           });
 
           // add presigned url to the list
           presignedUrls.push({
-            fileNameInBucket: fileName,
+            fileNameInBucket: pathInBucket,
             originalFileName: file.originalFileName,
             fileSize: file.fileSize,
             url,

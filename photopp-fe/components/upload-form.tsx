@@ -5,7 +5,11 @@ import { useState } from "react";
 import { Input } from "@heroui/input";
 import { addToast } from "@heroui/toast";
 
-export default function UploadForm() {
+interface UploadFormProps {
+  folderName?: string;
+}
+
+export default function UploadForm({ folderName }: UploadFormProps) {
     const [loading, setLoading] = useState(false);
     const [files, setFiles] = useState<File[]>([]);
 
@@ -34,7 +38,7 @@ export default function UploadForm() {
         }
 
         // Get presigned URLs from the API
-        const presignedUrls = await getPresignedUrls(shortFileProps);
+        const presignedUrls = await getPresignedUrls(shortFileProps, folderName);
         // Upload files using presigned URLs
         const res = await handleUpload(files, presignedUrls, () => {
             addToast({

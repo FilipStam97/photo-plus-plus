@@ -20,3 +20,10 @@ model File {
 
   createdAt DateTime @default(now())
 }
+
+model Folder {
+  id String @id @default(cuid())
+
+  name String @unique
+  createdAt DateTime @default(now())
+}
