@@ -1,4 +1,5 @@
 
+import AlbumGallery from "@/components/album-gallery";
 import UploadForm from "@/components/upload-form";
 import UploadGallery from "@/components/upload-gallery";
 
@@ -12,7 +13,8 @@ export default function Home() {
       <UploadForm />
     </section>
     <section>
-       <UploadGallery />
+      <AlbumGallery />
+       {/* <UploadGallery /> */}
     </section>
     </>
   );

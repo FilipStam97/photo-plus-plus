@@ -74,3 +74,33 @@ export async function POST(req: Request) {
     return new NextResponse("Internal error", { status: 500 });
   }
 }
+
+export async function GET(req: Request) {
+  try {
+    //get file names from db
+    const files = await prisma.file.findMany({
+      select: { fileName: true },
+    });
+
+    if (!files || files.length === 0) {
+      return NextResponse.json({ files: [] }, { status: 200 });
+    }
+
+    const presignedUrls = await Promise.all(
+      files.map(async (f: any) => {
+        const fileName = f.fileName;
+        const url = await createPresignedUrlToDownload({
+          bucketName: bucketName,
+          fileName,
+          expiry: 60 * 60,
+        });
+        return { originalName: fileName.split("/").pop(), url };
+      })
+    );
+
+    return NextResponse.json(presignedUrls, { status: 200 });
+  } catch (err) {
+    console.error("Error fetching presigned URLs:", err);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}
