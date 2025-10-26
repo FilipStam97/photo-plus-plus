@@ -9,11 +9,10 @@ from flask import Flask, app, jsonify, request
 from minio import Minio
 import numpy as np
 from PIL import Image
-from sklearn.cluster import DBSCAN
 import psycopg2
 
 app = Flask(__name__)
-host = os.getenv("MINIO_HOST", "minio")
+host = os.getenv("MINIO_HOST", "localhost") #lokalno je localhost, a ovako preko dockera treba da bude "minio"
 port = os.getenv("MINIO_PORT", "9000")
 access = os.getenv("MINIO_ACCESS_KEY", "admin")
 secret = os.getenv("MINIO_SECRET_KEY", "admin123")
@@ -33,8 +32,8 @@ BUCKET_NAME = "test"
 
 try:
     conn = psycopg2.connect(
-        host=os.getenv("DB_HOST", "db"),
-        port=os.getenv("DB_PORT", 5432),
+        host=os.getenv("DB_HOST", "localhost"), #localhost radi kad se python pokrene lokalno, a "db" kad je docker pokrenut
+        port=os.getenv("DB_PORT", 5332), #5432 preko dockera
         database=os.getenv("DB_NAME", "bank"),
         user=os.getenv("DB_USER", "admin"),
         password=os.getenv("DB_PASSWORD", "admin123")
@@ -55,7 +54,7 @@ def list_all_images():
     return image_files
 
 def list_all_images_folder(bucket_name, folder_name):
-    objects = client.list_objects(bucket_name, prefix= folder_name, recursive=True)
+    objects = client.list_objects(bucket_name, recursive=True)
     image_files = [
         obj.object_name
         for obj in objects
@@ -70,15 +69,19 @@ def get_faces_and_embeddings(image):
     print('nadjene karakteristike lica za  sliku')
     return face_encodings, face_locations
 
-@app.route('/save-face-embeddings', methods=['POST'])
-def  get_face_embeddings_minio(bucket_name, folder_name):
+@app.route('/get-face-embeddings', methods=['GET'])
+def get_face_embeddings():
+    bucket_name = request.args.get('bucketName') #ne radi za general bucket iz nekog razloga, ja sam napravila poseban "test" bucket
+
     metadata = []
 
-    image_files = list_all_images_folder(bucket_name, folder_name)
+    image_files = list_all_images_folder(bucket_name, '')
     if not image_files:
         return jsonify({"error": "No images found in bucket"}), 400
 
     for img_name in image_files:
+        if img_name.startswith('faces/'):
+            continue
         try:
             response = client.get_object(bucket_name, img_name)
             image_bytes = BytesIO(response.read())
@@ -89,16 +92,22 @@ def  get_face_embeddings_minio(bucket_name, folder_name):
             print(f"Failed to read {img_name}: {e}")
             continue
 
-        face_encodings, face_locations = get_faces_and_embeddings(image)
+        try:
+            face_encodings, face_locations = get_faces_and_embeddings(image)
 
-        for idx, (embedding, bbox) in enumerate(zip(face_encodings, face_locations)):
-            encoding_str = base64.b64encode(embedding.tobytes()).decode("utf-8")
-            metadata.append({
-                "image_name": img_name,
-                "face_index": idx,
-                "bbox": bbox,
-                "encoding_b64": encoding_str
-            })
+            for idx, (embedding, bbox) in enumerate(zip(face_encodings, face_locations)):
+                print('encoding?')
+                encoding_str = base64.b64encode(embedding.tobytes()).decode("utf-8")
+
+                metadata.append({
+                    "image_name": img_name,
+                    "face_index": idx,
+                    "bbox": bbox,
+                    "encoding_b64": encoding_str
+                })
+        except Exception as e:
+            print('Failed to extract face embeddings ', e)
+            continue
     return jsonify({"metadata": metadata})
 
 # gets face embeddings from uploaded images
@@ -106,7 +115,7 @@ def  get_face_embeddings_minio(bucket_name, folder_name):
 def get_embeddings_db(bucket_name):
     if(conn):
         cur = conn.cursor()
-        cur.execute('SELECT id, bucket, fileName, boundingBox, faceIndex, encoding_b64 FROM face_embeddings WHERE bucket = ' + bucket_name)
+        cur.execute('SELECT id, bucket, fileName, boundingBox, faceIndex, encoding_b64 FROM FaceEmbedding WHERE bucket = ' + bucket_name)
         rows = cur.fetchall()
         return rows
     return []   
@@ -217,14 +226,6 @@ def cluster_faces_minio():
 
 @app.route('/find-similar-faces-batch', methods=['POST'])
 def find_similar_faces_batch():
-    """
-    More efficient version: finds similar faces by comparing against 
-    all face embeddings at once using vectorized operations.
-    
-    Expected input: JSON with 'face_key' or file upload with 'image'
-    """
-    
-    # Get reference embedding (same as above)
     reference_embedding = None
     reference_face_key = None
     
@@ -328,4 +329,4 @@ def face_distance(enc1, enc2):
     return np.linalg.norm(enc1 - enc2)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=True)
