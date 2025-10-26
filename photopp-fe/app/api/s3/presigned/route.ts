@@ -46,7 +46,6 @@ export async function POST(req: Request) {
         })
       );
     }
-
     console.log({ presignedUrls });
 
     const publicUrls = presignedUrls.map((presignedUrl) => {
@@ -67,6 +66,29 @@ export async function POST(req: Request) {
         url: presignedUrl.publicUrl,
       })),
     });
+
+    //TODO: ovo ne mora da se zavrsi da bi se zavrsio request, moze da se doda da se to odradi u pozadini dok ostalo radi
+    const flaskRes = await fetch("http://localhost:5000/get-face-embeddings?bucketName=" + process.env.MINIO_BUCKET_NAME + "&folderName=" + folderName, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+    
+    if (!flaskRes.ok) {
+      throw new Error("Flask API error");
+    }
+    const flaskData = await flaskRes.json();
+
+    const normalizeEmbeddings = flaskData.metadata.map((x: any) => {
+      return {
+        bucket: process.env.MINIO_BUCKET_NAME,
+        fileName: x.image_name,
+        boundingBox: x.bbox,
+        faceIndex: x.face_index,
+        encoding_b64: x.encoding_b64
+    }});
+
+    //save face embeddings in database
+    const newEmbedding = await prisma.faceEmbedding.createMany(normalizeEmbeddings);
 
     return NextResponse.json(presignedUrls);
   } catch (error) {

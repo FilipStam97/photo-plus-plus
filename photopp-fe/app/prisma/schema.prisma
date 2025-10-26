@@ -27,3 +27,13 @@ model Folder {
   name String @unique
   createdAt DateTime @default(now())
 }
+
+model FaceEmbedding {
+  id String @id @default(cuid())
+
+  bucket String
+  fileName String
+  boundingBox String
+  faceIndex Int
+  faceEncoding String
+}
