@@ -2,6 +2,7 @@ import base64
 from io import BytesIO
 import json
 import cv2
+import os
 import face_recognition
 import hdbscan
 from flask import Flask, app, jsonify, request
@@ -12,23 +13,31 @@ from sklearn.cluster import DBSCAN
 import psycopg2
 
 app = Flask(__name__)
+host = os.getenv("MINIO_HOST", "minio")
+port = os.getenv("MINIO_PORT", "9000")
+access = os.getenv("MINIO_ACCESS_KEY", "admin")
+secret = os.getenv("MINIO_SECRET_KEY", "admin123")
+secure = os.getenv("MINIO_SECURE", "false").lower() in ("1","true","yes")
+
+endpoint = f"{host}:{port}"
+print(endpoint)
 
 client = Minio(
-    "localhost:9000",              
-    access_key="admin",      
-    secret_key="admin123",   
-    secure=False                  
+    endpoint,
+    access_key=access,
+    secret_key=secret,
+    secure=secure
 )
 BUCKET_NAME = "test"
 
 
 try:
     conn = psycopg2.connect(
-        host="localhost",
-        database="postgresql",
-        user="admin",
-        password="admin123",
-        port="5432"  # Default PostgreSQL port
+        host=os.getenv("DB_HOST", "db"),
+        port=os.getenv("DB_PORT", 5432),
+        database=os.getenv("DB_NAME", "bank"),
+        user=os.getenv("DB_USER", "admin"),
+        password=os.getenv("DB_PASSWORD", "admin123")
     )
     print("Connection to PostgreSQL successful!")
 
@@ -319,4 +328,4 @@ def face_distance(enc1, enc2):
     return np.linalg.norm(enc1 - enc2)
 
 if __name__ == "__main__":
-    app.run(debug = True)
+    app.run(host="0.0.0.0", port=5000)

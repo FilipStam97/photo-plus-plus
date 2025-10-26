@@ -1,4 +1,4 @@
-version: '3'
+version: '3.8'
 
 services:  
   minio:
@@ -23,6 +23,29 @@ services:
         interval: 30s
         timeout: 10s
         retries: 3
+  flask_api:
+      build:
+        context: ./ml        
+        dockerfile: Dockerfile
+      container_name: flask
+      depends_on:
+      - db
+      ports:
+        - "5000:5000"
+      networks:
+        - mynet
+      restart: unless-stopped    
+      environment:
+        - DB_HOST=db
+        - DB_PORT=5432
+        - DB_NAME=bank         
+        - DB_USER=admin
+        - DB_PASSWORD=admin123  
+        - MINIO_HOST=minio       
+        - MINIO_PORT=9000
+        - MINIO_ACCESS_KEY=admin
+        - MINIO_SECRET_KEY=admin123
+        - MINIO_SECURE=false
 
   db:
       container_name: postgres

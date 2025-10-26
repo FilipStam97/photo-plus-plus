@@ -1,0 +1,9 @@
+flask
+numpy
+opencv-python-headless
+face_recognition
+hdbscan
+minio
+Pillow
+scikit-learn
+psycopg2-binary
