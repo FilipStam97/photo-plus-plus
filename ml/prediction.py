@@ -640,48 +640,48 @@ def find_similar_faces():
         
         print("pokusaj brze pretrage po cluster idju ", clicked_cluster_id)
         # 2. Ako postoji cluster_id, prvo probaj brzu pretragu po cluster_id
-        cursor.execute("""
-            SELECT 
-                id,
-                image_name,
-                bbox,
-                cluster_id,
-                face_image_path
-            FROM face_embeddings
-            WHERE bucket_name = %s 
-            AND cluster_id = %s
-            AND is_representative = false
-        """, (bucket_name, clicked_cluster_id))
+        # cursor.execute("""
+        #     SELECT 
+        #         id,
+        #         image_name,
+        #         bbox,
+        #         cluster_id,
+        #         face_image_path
+        #     FROM face_embeddings
+        #     WHERE bucket_name = %s 
+        #     AND cluster_id = %s
+        #     AND is_representative = false
+        # """, (bucket_name, clicked_cluster_id))
         
-        cluster_faces = cursor.fetchall()
+        # cluster_faces = cursor.fetchall()
         
-        if cluster_faces:
-            conn.close()
+        # if cluster_faces:
+        #     conn.close()
             
-            # Grupiši u Python-u
-            images_dict = {}
-            for face in cluster_faces:
-                img_name = face['image_name']
-                if img_name not in images_dict:
-                    images_dict[img_name] = {
-                        'image_name': img_name,
-                        'faces': []
-                    }
-                images_dict[img_name]['faces'].append({
-                    'face_id': face['id'],
-                    'bbox': face['bbox'],
-                    'cluster_id': face['cluster_id'],
-                    'face_image_path': face['face_image_path']
-                })
+        #     # Grupiši u Python-u
+        #     images_dict = {}
+        #     for face in cluster_faces:
+        #         img_name = face['image_name']
+        #         if img_name not in images_dict:
+        #             images_dict[img_name] = {
+        #                 'image_name': img_name,
+        #                 'faces': []
+        #             }
+        #         images_dict[img_name]['faces'].append({
+        #             'face_id': face['id'],
+        #             'bbox': face['bbox'],
+        #             'cluster_id': face['cluster_id'],
+        #             'face_image_path': face['face_image_path']
+        #         })
             
-            images = list(images_dict.values())
-            return jsonify({
-                'success': True,
-                'method': 'cluster',
-                'cluster_id': clicked_cluster_id,
-                'total_images': len(images),
-                'images': images
-            }), 200
+        #     images = list(images_dict.values())
+        #     return jsonify({
+        #         'success': True,
+        #         'method': 'cluster',
+        #         'cluster_id': clicked_cluster_id,
+        #         'total_images': len(images),
+        #         'images': images
+        #     }), 200
         print("to najverovatnije nije uspelo, tako da cemo sad da probamo uporedjivanje slika...")
         # 3. Ako nema cluster_id ili želiš preciznije rezultate, uporedi embeddings
         cursor.execute("""
@@ -718,40 +718,42 @@ def find_similar_faces():
                     [stored_embedding],
                     reference_embedding
                 )[0]
-                
-                matches.append({
-                    'face_id': face['id'],
-                    'image_name': face['image_name'],
-                    'bbox': face['bbox'],
-                    'cluster_id': face['cluster_id'],
-                    'face_image_path': face['face_image_path'],
-                    'distance': float(distance)
-                })
+                matches.append(face['image_name'])
+                # matches.append({
+                #     'face_id': face['id'],
+                #     'image_name': face['image_name'],
+                #     'bbox': face['bbox'],
+                #     'cluster_id': face['cluster_id'],
+                #     'face_image_path': face['face_image_path'],
+                #     'distance': float(distance)
+                # })
         print("nadjeni matches")
         # Sortiraj po distance (najsličniji prvo)
-        matches.sort(key=lambda x: x['distance'])
+        # matches.sort(key=lambda x: x['distance'])
         
         # Grupiši po slikama
         unique_images = {}
-        for match in matches:
-            img_name = match['image_name']
-            if img_name not in unique_images:
-                unique_images[img_name] = {
-                    'image_name': img_name,
-                    'faces': []
-                }
-            unique_images[img_name]['faces'].append({
-                'face_id': match['face_id'],
-                'bbox': match['bbox'],
-                'distance': match['distance']
-            })
+        # final_images = []
+        # for match in matches:
+        #     img_name = match['image_name']
+            #final_images.append(img_name)
+            # if img_name not in unique_images:
+            #      unique_images[img_name] = {
+            #          'image_name': img_name,
+            #         'faces': []
+                # }
+            # unique_images[img_name]['faces'].append({
+            #     'face_id': match['face_id'],
+            #     'bbox': match['bbox'],
+            #     'distance': match['distance']
+            # })
         
         return jsonify({
             'success': True,
             'method': 'embedding_comparison',
             'total_matches': len(matches),
             'total_images': len(unique_images),
-            'images': list(unique_images.values())
+            'images': list(matches)
         }), 200
         
     except Exception as e:
