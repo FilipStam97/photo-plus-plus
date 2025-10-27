@@ -608,16 +608,82 @@ def find_similar_faces():
     try:
         data = request.json
         bucket_name = data.get('bucket_name')
-        reference_embedding = np.array(data.get('embedding'))
+        face_image_path = data.get('face_image_path')
         tolerance = data.get('tolerance', 0.6)
         
-        if not bucket_name or reference_embedding is None:
-            return jsonify({'error': 'bucket_name and embedding are required'}), 400
+        if not bucket_name or not face_image_path:
+            return jsonify({'error': 'bucket_name and face_image_path are required'}), 400
         
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Preuzmi sve embeddings iz baze za taj bucket
+        # 1. Preuzmi embedding za kliknuto lice iz baze
+        cursor.execute("""
+            SELECT 
+                id,
+                embedding,
+                cluster_id,
+                image_name as source_image
+            FROM face_embeddings
+            WHERE bucket_name = %s 
+            AND face_image_path = %s
+            AND is_representative = true
+        """, (bucket_name, face_image_path))
+        
+        clicked_face = cursor.fetchone()
+        if not clicked_face:
+            conn.close()
+            return jsonify({'error': 'Face not found'}), 404
+        
+        reference_embedding = np.array(clicked_face['embedding'])
+        clicked_cluster_id = clicked_face['cluster_id']
+        
+        print("pokusaj brze pretrage po cluster idju ", clicked_cluster_id)
+        # 2. Ako postoji cluster_id, prvo probaj brzu pretragu po cluster_id
+        cursor.execute("""
+            SELECT 
+                id,
+                image_name,
+                bbox,
+                cluster_id,
+                face_image_path
+            FROM face_embeddings
+            WHERE bucket_name = %s 
+            AND cluster_id = %s
+            AND is_representative = false
+        """, (bucket_name, clicked_cluster_id))
+        
+        cluster_faces = cursor.fetchall()
+        
+        if cluster_faces:
+            conn.close()
+            
+            # Grupiši u Python-u
+            images_dict = {}
+            for face in cluster_faces:
+                img_name = face['image_name']
+                if img_name not in images_dict:
+                    images_dict[img_name] = {
+                        'image_name': img_name,
+                        'faces': []
+                    }
+                images_dict[img_name]['faces'].append({
+                    'face_id': face['id'],
+                    'bbox': face['bbox'],
+                    'cluster_id': face['cluster_id'],
+                    'face_image_path': face['face_image_path']
+                })
+            
+            images = list(images_dict.values())
+            return jsonify({
+                'success': True,
+                'method': 'cluster',
+                'cluster_id': clicked_cluster_id,
+                'total_images': len(images),
+                'images': images
+            }), 200
+        print("to najverovatnije nije uspelo, tako da cemo sad da probamo uporedjivanje slika...")
+        # 3. Ako nema cluster_id ili želiš preciznije rezultate, uporedi embeddings
         cursor.execute("""
             SELECT 
                 id,
@@ -629,6 +695,7 @@ def find_similar_faces():
                 face_image_path
             FROM face_embeddings
             WHERE bucket_name = %s
+            AND is_representative = false
         """, (bucket_name,))
         
         all_faces = cursor.fetchall()
@@ -636,6 +703,7 @@ def find_similar_faces():
         
         matches = []
         
+        # Uporedi svaki embedding sa referentnim
         for face in all_faces:
             stored_embedding = np.array(face['embedding'])
             
@@ -656,12 +724,11 @@ def find_similar_faces():
                     'image_name': face['image_name'],
                     'bbox': face['bbox'],
                     'cluster_id': face['cluster_id'],
-                    'is_representative': face['is_representative'],
                     'face_image_path': face['face_image_path'],
                     'distance': float(distance)
                 })
-        
-        # Sortiraj po distance
+        print("nadjeni matches")
+        # Sortiraj po distance (najsličniji prvo)
         matches.sort(key=lambda x: x['distance'])
         
         # Grupiši po slikama
@@ -681,6 +748,7 @@ def find_similar_faces():
         
         return jsonify({
             'success': True,
+            'method': 'embedding_comparison',
             'total_matches': len(matches),
             'total_images': len(unique_images),
             'images': list(unique_images.values())
@@ -691,6 +759,7 @@ def find_similar_faces():
             'success': False,
             'error': str(e)
         }), 500
+
 
 @app.route('/api/get-embeddings', methods=['GET'])
 def get_embeddings():
@@ -704,7 +773,8 @@ def get_embeddings():
             bbox,
             cluster_id,
             face_image_path,
-            created_at
+            created_at,
+            is_representative
         FROM face_embeddings
      
     """)
