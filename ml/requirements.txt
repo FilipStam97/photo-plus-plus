@@ -7,4 +7,4 @@ hdbscan
 Pillow==10.1.0
 minio==7.2.0
 python-dotenv==1.0.0
-opencv-python
+opencv-python==4.8.0.76

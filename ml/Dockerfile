@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     libsm6 \
+    libgl1 \
     libxext6 \
     libxrender-dev \
     libglib2.0-0 \
