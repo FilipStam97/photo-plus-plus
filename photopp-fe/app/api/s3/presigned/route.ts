@@ -68,9 +68,12 @@ export async function POST(req: Request) {
     });
 
     //TODO: ovo ne mora da se zavrsi da bi se zavrsio request, moze da se doda da se to odradi u pozadini dok ostalo radi
-    const flaskRes = await fetch("http://127.0.0.1:5000/get-face-embeddings?bucketName=" + process.env.MINIO_BUCKET_NAME + "&folderName=" , {
-      method: "GET",
-      headers: { "Content-Type": "application/json" }
+    const flaskRes = await fetch("http://127.0.0.1:5000/api/cluster-images" , {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        bucket_name: "test" 
+      })
     });
     
     if (!flaskRes.ok) {
@@ -78,15 +81,6 @@ export async function POST(req: Request) {
     }
     const flaskData = await flaskRes.json();
 
-    const normalizeEmbeddings = flaskData.metadata.map((x: any) => {
-      return {
-        bucket: process.env.MINIO_BUCKET_NAME,
-        fileName: x.image_name,
-        boundingBox: x.bbox,
-        faceIndex: x.face_index,
-        encoding_b64: x.encoding_b64
-    }});
-    console.log(normalizeEmbeddings)
     //save face embeddings in database
     // const newEmbedding = await prisma.faceEmbedding.createMany(normalizeEmbeddings);
 
