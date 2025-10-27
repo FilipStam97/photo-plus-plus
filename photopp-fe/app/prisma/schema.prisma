@@ -4,13 +4,13 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  url       = "postgresql://admin:admin123@localhost:5332/postgres?schema=public"
+  url       = "postgresql://admin:admin123@localhost:5332/bank?schema=public"
  // directUrl = env("DIRECT_URL")
 
 }
 
 model File {
-  id String @id @default(cuid())
+  id Int @id @default(autoincrement())
 
   bucket String?
   fileName String?
@@ -19,6 +19,7 @@ model File {
   url String?
 
   createdAt DateTime @default(now())
+  @@map("images")
 }
 
 model Folder {
@@ -29,11 +30,19 @@ model Folder {
 }
 
 model FaceEmbedding {
-  id String @id @default(cuid())
-
-  bucket String
-  fileName String
-  boundingBox String
-  faceIndex Int
-  faceEncoding String
+  id               Int      @id @default(autoincrement())
+  bucketName       String   @map("bucket_name")
+  imageName        String   @map("image_name")
+  embedding        Json     
+  bbox             Json     
+  clusterId        Int?     @map("cluster_id")
+  isRepresentative Boolean  @default(false) @map("is_representative")
+  faceImagePath    String?  @map("face_image_path")
+  createdAt        DateTime @default(now()) @map("created_at")
+  
+  @@index([bucketName])
+  @@index([clusterId])
+  @@index([isRepresentative])
+  @@index([imageName])
+  @@map("face_embeddings")
 }

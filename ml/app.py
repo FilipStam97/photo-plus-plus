@@ -6,10 +6,13 @@ import os
 import face_recognition
 import hdbscan
 from flask import Flask, app, jsonify, request
-from minio import Minio
+from minio import Minio, S3Error
 import numpy as np
 from PIL import Image
 import psycopg2
+from psycopg2.extras import execute_values
+
+from ml.helpers import get_faces_and_embeddings, is_similar, list_all_images_folder
 
 app = Flask(__name__)
 host = os.getenv("MINIO_HOST", "localhost") #lokalno je localhost, a ovako preko dockera treba da bude "minio"
@@ -29,20 +32,21 @@ client = Minio(
 )
 BUCKET_NAME = "test"
 
+def get_db_connection():
+    try:
+        conn = psycopg2.connect(
+            host=os.getenv("DB_HOST", "localhost"), #localhost radi kad se python pokrene lokalno, a "db" kad je docker pokrenut
+            port=os.getenv("DB_PORT", 5332), #5432 preko dockera
+            database=os.getenv("DB_NAME", "bank"),
+            user=os.getenv("DB_USER", "admin"),
+            password=os.getenv("DB_PASSWORD", "admin123")
+        )
+        print("Connection to PostgreSQL successful!")
 
-try:
-    conn = psycopg2.connect(
-        host=os.getenv("DB_HOST", "localhost"), #localhost radi kad se python pokrene lokalno, a "db" kad je docker pokrenut
-        port=os.getenv("DB_PORT", 5332), #5432 preko dockera
-        database=os.getenv("DB_NAME", "bank"),
-        user=os.getenv("DB_USER", "admin"),
-        password=os.getenv("DB_PASSWORD", "admin123")
-    )
-    print("Connection to PostgreSQL successful!")
-
-except psycopg2.Error as e:
-    print(f"Error connecting to PostgreSQL: {e}")
-    conn = None
+    except psycopg2.Error as e:
+        print(f"Error connecting to PostgreSQL: {e}")
+        conn = None
+    return conn
 
 def list_all_images():
     objects = client.list_objects(BUCKET_NAME, recursive=True)
@@ -53,21 +57,7 @@ def list_all_images():
     ]
     return image_files
 
-def list_all_images_folder(bucket_name, folder_name):
-    objects = client.list_objects(bucket_name, recursive=True)
-    image_files = [
-        obj.object_name
-        for obj in objects
-        if obj.object_name.lower().endswith((".jpg", ".jpeg", ".png"))
-    ]
-    return image_files
 
-def get_faces_and_embeddings(image):
-    rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    face_locations = face_recognition.face_locations(rgb_image)
-    face_encodings = face_recognition.face_encodings(rgb_image, face_locations)
-    print('nadjene karakteristike lica za  sliku')
-    return face_encodings, face_locations
 
 @app.route('/get-face-embeddings', methods=['GET'])
 def get_face_embeddings():
@@ -75,7 +65,7 @@ def get_face_embeddings():
 
     metadata = []
 
-    image_files = list_all_images_folder(bucket_name, '')
+    image_files = list_all_images_folder(bucket_name, client)
     if not image_files:
         return jsonify({"error": "No images found in bucket"}), 400
 
@@ -113,6 +103,7 @@ def get_face_embeddings():
 # gets face embeddings from uploaded images
 
 def get_embeddings_db(bucket_name):
+    conn = get_db_connection()
     if(conn):
         cur = conn.cursor()
         cur.execute('SELECT id, bucket, fileName, boundingBox, faceIndex, encoding_b64 FROM FaceEmbedding WHERE bucket = ' + bucket_name)
@@ -129,11 +120,9 @@ def cluster_faces_minio():
     if not image_files:
         return jsonify({"error": "No images found in bucket"}), 400
 
-    # Step 1. Extract embeddings and metadata for all faces
     for img_name in image_files:
         try:
             response = client.get_object(BUCKET_NAME, img_name)
-            print('nadjen bucket')
             image_bytes = BytesIO(response.read())
             image = np.array(Image.open(image_bytes))
             response.close()
@@ -143,15 +132,7 @@ def cluster_faces_minio():
             continue
 
         face_encodings, face_locations = get_faces_and_embeddings(image)
-
-        for idx, (embedding, bbox) in enumerate(zip(face_encodings, face_locations)):
-            embeddings.append(embedding)
-            metadata.append({
-                "image_name": img_name,
-                "face_index": idx,
-                "bbox": bbox
-            })
-        print('napravljeni metapodaci za slike')
+        embeddings = insert_all_face_embeddings(metadata, img_name, face_encodings, face_locations)
 
     if not embeddings:
         return jsonify({"error": "No faces found in bucket"}), 400
@@ -184,7 +165,6 @@ def cluster_faces_minio():
             buf = BytesIO()
             pil_face.save(buf, format="JPEG")
             buf.seek(0)
-            print('napravljen isecak lica')
 
             # Convert face encoding to base64 for metadata (MinIO metadata must be strings)
             encoding_str = base64.b64encode(embeddings[idx].tobytes()).decode("utf-8")
@@ -223,6 +203,46 @@ def cluster_faces_minio():
             print(f"Failed to crop/upload face for {img_name}: {e}")
             continue
     return jsonify({"clusters": clusters})
+
+def insert_all_face_embeddings(embeddings, metadata, img_name, face_encodings, face_locations):
+    values = []
+    embeddings = []
+    for idx, (embedding, bbox) in enumerate(zip(face_encodings, face_locations)):
+        encoding_str= base64.b64encode(embedding.tobytes()).decode("utf-8")
+        embeddings.append(embedding)
+        metadata.append({
+                "image_name": img_name,
+                "face_index": idx,
+                "bbox": bbox
+            })
+        values.append((
+                img_name,
+                psycopg2.extras.Json(embedding),
+                psycopg2.extras.Json(bbox),
+                False
+            ))
+        
+        # Batch insert face embeddings into database
+    conn = get_db_connection()
+    cursor = conn.cursor()
+        
+    execute_values(cursor, """
+            INSERT INTO face_embeddings 
+            (image_name, embedding, bbox, is_representative)
+            VALUES %s
+            RETURNING id
+        """, values)
+        
+    inserted_ids = [row[0] for row in cursor.fetchall()]
+    conn.commit()
+    conn.close()
+        
+    face_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    return embeddings
 
 @app.route('/find-similar-faces-batch', methods=['POST'])
 def find_similar_faces_batch():
@@ -327,6 +347,98 @@ def find_similar_faces_batch():
 
 def face_distance(enc1, enc2):
     return np.linalg.norm(enc1 - enc2)
+
+def cluster_faces_with_hdbscan(embeddings, min_cluster_size=2, min_samples=1):
+    """Cluster new face embeddings using HDBSCAN."""
+    clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, min_samples=min_samples)
+    labels = clusterer.fit_predict(embeddings)
+    return labels
+
+def load_existing_embeddings(client, BUCKET_NAME, dtype):
+    """Load all face embeddings already in MinIO metadata."""
+    embeddings = []
+    try:
+        for obj in client.list_objects(BUCKET_NAME, prefix="faces/"):
+            stat = client.stat_object(BUCKET_NAME, obj.object_name)
+            meta = stat.metadata
+            if "x-amz-meta-encoding_b64" in meta:
+                try:
+                    emb_bytes = base64.b64decode(meta["x-amz-meta-encoding_b64"])
+                    emb = np.frombuffer(emb_bytes, dtype=dtype)
+                    embeddings.append(emb)
+                except Exception as decode_err:
+                    print(f"Skipping {obj.object_name} — invalid metadata: {decode_err}")
+    except S3Error as e:
+        print(f"Error loading existing embeddings: {e}")
+    return embeddings
+
+def upload_unique_faces(client, BUCKET_NAME, img_name, embeddings, bboxes, coords):
+    """
+    embeddings: numpy array of shape (n_faces, embedding_dim)
+    bboxes: list of bounding boxes for each face
+    coords: list of (top, bottom, left, right) for each face
+    """
+    labels = cluster_faces_with_hdbscan(embeddings)
+    print(f"Clustered {len(embeddings)} faces into {len(set(labels))} clusters")
+
+    existing_embeddings = load_existing_embeddings(client, BUCKET_NAME, dtype=embeddings[0].dtype)
+    print(f"Loaded {len(existing_embeddings)} existing embeddings from MinIO")
+
+    for idx, (emb, bbox, label, (top, bottom, left, right)) in enumerate(zip(embeddings, bboxes, labels, coords)):
+        # Compare against existing embeddings
+        is_duplicate = False
+        for existing_emb in existing_embeddings:
+            if is_similar(emb, existing_emb):
+                is_duplicate = True
+                print(f"Face {idx} is similar to existing one — skipping upload.")
+                break
+
+        if is_duplicate:
+            continue  # skip only this one
+
+        try:
+            response = client.get_object(BUCKET_NAME, img_name)
+            image_bytes = BytesIO(response.read())
+            image = np.array(Image.open(image_bytes))
+            response.close()
+            response.release_conn()
+
+            # Crop face
+            face_crop = image[top:bottom, left:right]
+            pil_face = Image.fromarray(face_crop)
+            buf = BytesIO()
+            pil_face.save(buf, format="JPEG")
+            buf.seek(0)
+
+            # Encode embedding as base64 for MinIO metadata
+            encoding_str = base64.b64encode(emb.tobytes()).decode("utf-8")
+
+            # Define unique key & metadata
+            face_key = f"faces/{label}_{img_name.replace('/', '_')}_{idx}.jpg"
+            face_meta = {
+                "source_image": img_name,
+                "face_index": str(idx),
+                "bbox": json.dumps(bbox),
+                "cluster_label": str(label),
+                "encoding_b64": encoding_str[:2000],
+            }
+
+            # Upload
+            client.put_object(
+                BUCKET_NAME,
+                face_key,
+                buf,
+                length=buf.getbuffer().nbytes,
+                content_type="image/jpeg",
+                metadata=face_meta,
+            )
+
+            # Add this new embedding to prevent duplicates in the same run
+            existing_embeddings.append(emb)
+            print(f"✅ Uploaded new unique face for cluster {label}: {face_key}")
+
+        except S3Error as e:
+            print(f"Upload failed: {e}")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

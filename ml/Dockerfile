@@ -30,4 +30,4 @@ COPY . .
 EXPOSE 5000
 
 # Run Flask app
-CMD ["python", "app.py"]
+CMD ["python", "prediction.py"]
