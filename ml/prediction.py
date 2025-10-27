@@ -83,12 +83,13 @@ def get_face_embeddings_db(bucket_name):
 def get_faces_minio(bucket_name):
     """
     Izvlači sve face embeddings iz MinIO faces/ foldera
+    Vraća samo putanje i cluster_id, embedding se čita iz baze
     
     Args:
         bucket_name: Ime MinIO bucket-a
         
     Returns:
-        list: Lista dict-ova sa face embeddingima i metapodacima
+        list: Lista dict-ova sa putanjama i cluster_id
     """
     faces = []
     
@@ -105,20 +106,11 @@ def get_faces_minio(bucket_name):
             stat = client.stat_object(bucket_name, obj.object_name)
             metadata = stat.metadata
             
-            if 'x-amz-meta-embedding' in metadata:
-                try:
-                    embedding = json.loads(metadata['x-amz-meta-embedding'])
-                    
-                    faces.append({
-                        'face_name': obj.object_name,
-                        'embedding': np.array(embedding),
-                        'cluster_id': metadata.get('x-amz-meta-cluster-id'),
-                        'source_image': metadata.get('x-amz-meta-source-image'),
-                        'bbox': json.loads(metadata.get('x-amz-meta-bbox', '{}')),
-                    })
-                except json.JSONDecodeError:
-                    print(f"Failed to parse metadata for {obj.object_name}")
-                    continue
+            faces.append({
+                'face_path': obj.object_name,
+                'cluster_id': int(metadata.get('x-amz-meta-cluster-id', -1)),
+                'source_image': metadata.get('x-amz-meta-source-image', ''),
+            })
     
     except S3Error as e:
         print(f"Error reading faces from MinIO: {e}")
@@ -170,10 +162,10 @@ def insert_face_embeddings(conn, embeddings_data):
     return inserted_ids
 
 
-def insert_faces(conn, bucket_name, new_faces_data, existing_faces_embeddings, tolerance=0.6):
+def insert_faces(conn, bucket_name, new_faces_data, existing_cluster_embeddings, tolerance=0.6):
     """
     Upisuje nove representative face slike u MinIO i bazu
-    Proverava da li slično lice već postoji
+    Proverava da li novi klaster već postoji među postojećim klasterima
     
     Args:
         conn: Database connection
@@ -181,12 +173,12 @@ def insert_faces(conn, bucket_name, new_faces_data, existing_faces_embeddings, t
         new_faces_data: Lista novih lica za proveru
             [{
                 'image_name': str,
-                'face_image': PIL.Image,
+                'face_image': PIL.Image (already cropped),
                 'embedding': np.array,
                 'bbox': dict,
                 'cluster_id': int
             }]
-        existing_faces_embeddings: Lista postojećih face embeddings iz MinIO
+        existing_cluster_embeddings: Dict {cluster_id: [embeddings]} postojećih klastera
         tolerance: Prag za prepoznavanje sličnih lica (default 0.6)
         
     Returns:
@@ -194,117 +186,171 @@ def insert_faces(conn, bucket_name, new_faces_data, existing_faces_embeddings, t
     """
     saved_faces = []
     skipped_faces = 0
+    cluster_mapping = {}  # new_cluster_id -> existing_cluster_id
     
     for face_data in new_faces_data:
-        print("face",face_data)
+        print(face_data)
         new_embedding = face_data['embedding']
-        is_new_face = True
+        new_cluster_id = face_data.get('cluster_id')
         
-        # Proveri da li slično lice već postoji
-        if existing_faces_embeddings:
-            existing_embeddings = np.array([f['embedding'] for f in existing_faces_embeddings])
-            
-            # Uporedi sa svim postojećim licima
-            matches = face_recognition.compare_faces(
-                existing_embeddings, 
-                new_embedding, 
-                tolerance=tolerance
-            )
-            
-            if any(matches):
-                is_new_face = False
-                skipped_faces += 1
-
-        if not is_new_face:
-            continue
-        if is_new_face:
-            # Generiši jedinstveno ime za face sliku
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-            cluster_id = face_data.get('cluster_id', 'unknown')
-            face_filename = f"faces/face_{cluster_id}_{timestamp}.jpg"
-            
-            # Konvertuj PIL Image u bytes
-            img_byte_arr = io.BytesIO()
-            face_data['face_image'].save(img_byte_arr, format='JPEG', quality=95)
-            img_byte_arr.seek(0)
-            
-            # Pripremi metadata
-            metadata = {
-                'embedding': json.dumps(new_embedding.tolist()),
-                'cluster-id': str(cluster_id),
-                'image_name': face_data['image_name'],
-                'bbox': json.dumps(face_data['bbox'])
-            }
-            
-            try:
-                # Upload u MinIO
-                client.put_object(
-                    bucket_name,
-                    face_filename,
-                    img_byte_arr,
-                    length=img_byte_arr.getbuffer().nbytes,
-                    content_type='image/jpeg',
-                    metadata=metadata
+        # Proveri da li ovaj novi klaster odgovara nekom postojećem klasteru
+        matched_existing_cluster = None
+        
+        if existing_cluster_embeddings:
+            for existing_cluster_id, embeddings in existing_cluster_embeddings.items():
+                # Uporedi sa svim embeddingima iz tog postojećeg klastera
+                matches = face_recognition.compare_faces(
+                    embeddings,
+                    new_embedding,
+                    tolerance=tolerance
                 )
                 
-                # Sačuvaj u bazu kao representative face
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO face_embeddings 
-                    (bucket_name, image_name, embedding, bbox, cluster_id, is_representative, face_image_path)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                """, (
-                    bucket_name,
-                    face_data['image_name'],
-                    json(new_embedding.tolist()),
-                    json(face_data['bbox']),
-                    cluster_id if cluster_id != 'unknown' else None,
-                    True,
-                    face_filename
-                ))
-                
-                face_id = cursor.fetchone()[0]
-                conn.commit()
-                
-                saved_faces.append({
-                    'face_id': face_id,
-                    'face_path': face_filename,
-                    'cluster_id': cluster_id
-                })
-                
-                # Dodaj u listu postojećih za sledeću iteraciju
-                existing_faces_embeddings.append({
-                    'embedding': new_embedding,
-                    'face_name': face_filename
-                })
-                
-            except S3Error as e:
-                print(f"Error uploading face to MinIO: {e}")
-                continue
+                if any(matches):
+                    matched_existing_cluster = existing_cluster_id
+                    cluster_mapping[new_cluster_id] = existing_cluster_id
+                    break
+        
+        # Ako se poklapa sa postojećim klasterom, preskači
+        if matched_existing_cluster is not None:
+            skipped_faces += 1
+            continue
+        
+        # Ovo je novo lice - sačuvaj ga
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        face_filename = f"faces/face_{new_cluster_id}_{timestamp}.jpg"
+        
+        # Konvertuj PIL Image u bytes (slika je već cropovana)
+        img_byte_arr = io.BytesIO()
+        face_data['face_image'].save(img_byte_arr, format='JPEG', quality=95)
+        img_byte_arr.seek(0)
+        
+        # Pripremi metadata (bez embeddinga!)
+        metadata = {
+            'cluster-id': str(new_cluster_id),
+            'source-image': face_data['image_name'],
+            'bbox-x': str(face_data['bbox']['x']),
+            'bbox-y': str(face_data['bbox']['y']),
+            'bbox-width': str(face_data['bbox']['width']),
+            'bbox-height': str(face_data['bbox']['height'])
+        }
+        
+        try:
+            # Upload u MinIO
+            client.put_object(
+                bucket_name,
+                face_filename,
+                img_byte_arr,
+                length=img_byte_arr.getbuffer().nbytes,
+                content_type='image/jpeg',
+                metadata=metadata
+            )
+            
+            # Sačuvaj u bazu kao representative face
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO face_embeddings 
+                (bucket_name, image_name, embedding, bbox, cluster_id, is_representative, face_image_path)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (
+                bucket_name,
+                face_data['image_name'],
+                Json(new_embedding.tolist()),
+                Json(face_data['bbox']),
+                new_cluster_id,
+                True,
+                face_filename
+            ))
+            
+            face_id = cursor.fetchone()[0]
+            conn.commit()
+            
+            saved_faces.append({
+                'face_id': face_id,
+                'face_path': face_filename,
+                'cluster_id': new_cluster_id
+            })
+            
+            # Dodaj u postojeće klastere za sledeću iteraciju
+            if new_cluster_id not in existing_cluster_embeddings:
+                existing_cluster_embeddings[new_cluster_id] = []
+            existing_cluster_embeddings[new_cluster_id].append(new_embedding)
+            
+        except S3Error as e:
+            print(f"Error uploading face to MinIO: {e}")
+            continue
     
     return {
         'saved': len(saved_faces),
         'skipped': skipped_faces,
-        'faces': saved_faces
+        'faces': saved_faces,
+        'cluster_mapping': cluster_mapping
     }
+def update_cluster_ids(conn, bucket_name, cluster_mapping):
+    """
+    Ažuriraj cluster_id za nova lica koja pripadaju postojećim klasterima
+    
+    Args:
+        conn: Database connection
+        bucket_name: Bucket name
+        cluster_mapping: Dict {new_cluster_id: existing_cluster_id}
+    """
+    if not cluster_mapping:
+        return
+    
+    cursor = conn.cursor()
+    
+    for new_cluster_id, existing_cluster_id in cluster_mapping.items():
+        cursor.execute("""
+            UPDATE face_embeddings
+            SET cluster_id = %s
+            WHERE bucket_name = %s 
+            AND cluster_id = %s
+            AND is_representative = false
+        """, (existing_cluster_id, bucket_name, new_cluster_id))
+    
+    conn.commit()
+    print(f"Updated cluster IDs: {cluster_mapping}")
 
+def get_representative_embeddings_from_db(conn, bucket_name):
+    """
+    Učitaj sve representative face embeddings iz baze
+    
+    Returns:
+        dict: {cluster_id: [embeddings]}
+    """
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cursor.execute("""
+        SELECT cluster_id, embedding
+        FROM face_embeddings
+        WHERE bucket_name = %s 
+        AND is_representative = true
+        AND cluster_id IS NOT NULL
+    """, (bucket_name,))
+    
+    rows = cursor.fetchall()
+    
+    # Grupiši embeddings po cluster_id
+    cluster_embeddings = {}
+    for row in rows:
+        cluster_id = row['cluster_id']
+        embedding = np.array(row['embedding'])
+        
+        if cluster_id not in cluster_embeddings:
+            cluster_embeddings[cluster_id] = []
+        cluster_embeddings[cluster_id].append(embedding)
+    
+    return cluster_embeddings
 def cluster_images(bucket_name, min_cluster_size=2, tolerance=0.6):
     """
     Glavna funkcija koja:
     1. Učitava sve slike iz bucket-a
     2. Izvlači face embeddings samo za nove slike
-    3. Klasterizuje lica pomoću HDBSCAN
-    4. Čuva embeddings u bazu
-    5. Čuva representative faces u MinIO
-    
-    Args:
-        bucket_name: MinIO bucket ime
-        min_cluster_size: Minimalan broj lica za klaster
-        tolerance: Prag za prepoznavanje sličnih lica
-        
-    Returns:
-        dict: Rezultati klasterizacije
+    3. Učitava postojeće embeddings iz baze
+    4. Klasterizuje SVA lica (nova + postojeća) pomoću HDBSCAN
+    5. Čuva nove embeddings u bazu
+    6. Čuva nove representative faces u MinIO
     """
     conn = get_db_connection()
     
@@ -314,75 +360,70 @@ def cluster_images(bucket_name, min_cluster_size=2, tolerance=0.6):
         existing_images = get_face_embeddings_db(bucket_name)
         print(f"Found {len(existing_images)} images with existing embeddings")
         
-        # 2. Izvuci sve slike iz bucket-a
+        # 2. Učitaj postojeće embeddings iz baze
+        print("Loading existing face embeddings from database...")
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT image_name, embedding, bbox, cluster_id
+            FROM face_embeddings
+            WHERE bucket_name = %s
+        """, (bucket_name,))
+        
+        existing_face_data = cursor.fetchall()
+        print(f"Found {len(existing_face_data)} existing face embeddings")
+        
+        # 3. Izvuci sve slike iz bucket-a
         print("Fetching all images from MinIO...")
         all_objects = client.list_objects(bucket_name, recursive=True)
         
         new_images = []
         for obj in all_objects:
-            # Preskoci faces/ folder i fajlove koji nisu slike
             if obj.object_name.startswith('faces/') or obj.object_name.endswith('/'):
                 continue
             
             if not obj.object_name.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp')):
                 continue
             
-            # Dodaj samo nove slike
             if obj.object_name not in existing_images:
                 new_images.append(obj.object_name)
         
         print(f"Found {len(new_images)} new images to process")
         
-        if not new_images:
-            return {
-                'success': True,
-                'message': 'No new images to process',
-                'stats': {
-                    'new_images': 0,
-                    'faces_detected': 0,
-                    'faces_saved': 0,
-                    'clusters': 0
-                }
-            }
-        
-        # 3. Izvuci face embeddings za nove slike
+        # 4. Izvuci face embeddings za nove slike
         print("Extracting face embeddings from new images...")
-        all_faces = []
+        new_faces = []
         
         for image_name in new_images:
             try:
-                # Preuzmi sliku sa MinIO
                 response = client.get_object(bucket_name, image_name)
                 image_data = response.read()
                 image = Image.open(io.BytesIO(image_data))
                 
-                # Konvertuj u RGB ako nije
                 if image.mode != 'RGB':
                     image = image.convert('RGB')
                 
-                # Konvertuj PIL u numpy array
                 image_array = np.array(image)
                 
-                # Detektuj lica
                 face_locations = face_recognition.face_locations(image_array)
                 face_encodings = face_recognition.face_encodings(image_array, face_locations)
                 
                 for encoding, location in zip(face_encodings, face_locations):
                     top, right, bottom, left = location
                     
-                    # Iseci lice iz slike
+                    # Cropuj lice
                     face_image = image.crop((left, top, right, bottom))
                     
-                    all_faces.append({
+                    new_faces.append({
                         'image_name': image_name,
-                        'encoding': encoding,
+                        'embedding': encoding,
                         'face_image': face_image,
                         'bbox': {
                             'x': left,
                             'y': top,
                             'width': right - left,
                             'height': bottom - top
-                        }
+                        },
+                        'is_new': True
                     })
                 
                 response.close()
@@ -392,91 +433,110 @@ def cluster_images(bucket_name, min_cluster_size=2, tolerance=0.6):
                 print(f"Error processing {image_name}: {e}")
                 continue
         
-        print(f"Detected {len(all_faces)} faces in new images")
+        print(f"Detected {len(new_faces)} faces in new images")
         
-        if not all_faces:
+        # 5. Kombinuj postojeća i nova lica za klasterizaciju
+        all_faces_for_clustering = []
+        
+        # Dodaj postojeća lica
+        for face_data in existing_face_data:
+            all_faces_for_clustering.append({
+                'image_name': face_data['image_name'],
+                'embedding': np.array(face_data['embedding']),
+                'bbox': face_data['bbox'],
+                'is_new': False,
+                'old_cluster_id': face_data['cluster_id']
+            })
+        
+        # Dodaj nova lica
+        all_faces_for_clustering.extend(new_faces)
+        
+        print(f"Total faces for clustering: {len(all_faces_for_clustering)}")
+        
+        if len(all_faces_for_clustering) == 0:
             return {
                 'success': True,
-                'message': 'No faces detected in new images',
+                'message': 'No faces to process',
                 'stats': {
-                    'new_images': len(new_images),
+                    'new_images': 0,
                     'faces_detected': 0,
                     'faces_saved': 0,
                     'clusters': 0
                 }
             }
         
-        # 4. Klasterizacija pomocu HDBSCAN
-        print("Clustering faces...")
-        encodings = np.array([face['encoding'] for face in all_faces])
-        num_points = len(encodings)
-
-        if num_points == 0:
-            cluster_labels = []
-        elif num_points == 1:
-            cluster_labels = [0]  # single cluster for one point
-        else:
-            cluster_size = min(2, num_points)
-            clusterer = hdbscan.HDBSCAN(cluster_size)
-            cluster_labels = clusterer.fit_predict(encodings)
-                
+        # 6. HDBSCAN klasterizacija na SVIM licima
+        print("Clustering all faces with HDBSCAN...")
+        encodings = np.array([face['embedding'] for face in all_faces_for_clustering])
+        
+        clusterer = hdbscan.HDBSCAN(
+            min_cluster_size=min_cluster_size,
+            metric='euclidean',
+            cluster_selection_method='eom'
+        )
+        cluster_labels = clusterer.fit_predict(encodings)
+        
         # Dodaj cluster ID svakom licu
-        for face, cluster_id in zip(all_faces, cluster_labels):
+        for face, cluster_id in zip(all_faces_for_clustering, cluster_labels):
             face['cluster_id'] = int(cluster_id) if cluster_id != -1 else None
         
         num_clusters = len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)
         print(f"Found {num_clusters} clusters")
         
-        # 5. Sacuvaj face embeddings u bazu
-        print("Saving face embeddings to database...")
-        embeddings_data = [{
+        # 7. Sačuvaj embeddings samo za NOVA lica
+        print("Saving new face embeddings to database...")
+        new_embeddings_data = [{
             'bucket_name': bucket_name,
             'image_name': face['image_name'],
-            'embedding': face['encoding'].tolist(),
+            'embedding': face['embedding'].tolist(),
             'bbox': face['bbox'],
             'cluster_id': face['cluster_id']
-        } for face in all_faces]
-        print('krece')
-        insert_face_embeddings(conn, embeddings_data)
+        } for face in all_faces_for_clustering if face['is_new']]
         
-        # 6. Izvuci postojece representative faces iz MinIO
-        print("Loading existing representative faces from MinIO...")
-        existing_faces = get_faces_minio(bucket_name)
-        print(len(existing_faces), " postojecig faca ")
-        # 7. Grupiši lica po klasterima i pronađi representative faces
-        print("Finding representative faces for each cluster...")
-        clusters = {}
-        noise_faces = []
+        if new_embeddings_data:
+            insert_face_embeddings(conn, new_embeddings_data)
         
-        for face in all_faces:
+        # 8. Učitaj postojeće representative embeddings
+        print("Loading existing representative faces...")
+        existing_cluster_embeddings = get_representative_embeddings_from_db(conn, bucket_name)
+        
+        # 9. Grupiši nova lica po klasterima
+        print("Finding new representative faces...")
+        new_clusters = {}
+        
+        for face in all_faces_for_clustering:
+            if not face['is_new']:
+                continue
+            
             cluster_id = face.get('cluster_id')
-            if cluster_id is not None:
-                if cluster_id not in clusters:
-                    clusters[cluster_id] = []
-                clusters[cluster_id].append(face)
-            else:
-                noise_faces.append(face)
+            if cluster_id is not None and cluster_id >= 0:
+                if cluster_id not in new_clusters:
+                    new_clusters[cluster_id] = []
+                new_clusters[cluster_id].append(face)
         
-        # Uzmi po jedno reprezentativno lice iz svakog klastera
-        representative_faces = []
-        for cluster_id, faces in clusters.items():
+        # Uzmi po jedno reprezentativno lice iz svakog NOVOG klastera
+        new_representative_faces = []
+        for cluster_id, faces in new_clusters.items():
             if faces:
-                # Možeš uzeti prvo lice ili lice najbliže centroidu
-                representative_faces.append(faces[0])
-
-        face_stats = {
-            'saved': 0,
-            'skipped': 0,
-            'faces': 0
-        }
-        if len(representative_faces) > 0:
+                new_representative_faces.append(faces[0])
+        
+        print(f"Found {len(new_representative_faces)} potential new representative faces")
+        
+        # 10. Sačuvaj samo NOVE representative faces
+        face_stats = {'saved': 0, 'skipped': 0, 'faces': [], 'cluster_mapping': {}}
+        
+        if new_representative_faces:
             face_stats = insert_faces(
                 conn,
                 bucket_name,
-                representative_faces,
-                existing_faces,
+                new_representative_faces,
+                existing_cluster_embeddings,
                 tolerance=tolerance
             )
+            
+            # Ažuriraj cluster_id za lica koja pripadaju postojećim klasterima
+            if face_stats['cluster_mapping']:
+                update_cluster_ids(conn, bucket_name, face_stats['cluster_mapping'])
         
         conn.close()
         
@@ -485,11 +545,12 @@ def cluster_images(bucket_name, min_cluster_size=2, tolerance=0.6):
             'message': 'Clustering completed successfully',
             'stats': {
                 'new_images': len(new_images),
-                'faces_detected': len(all_faces),
+                'new_faces_detected': len(new_faces),
+                'total_faces_clustered': len(all_faces_for_clustering),
                 'faces_saved': face_stats['saved'],
                 'faces_skipped': face_stats['skipped'],
                 'clusters': num_clusters,
-                'noise_faces': len(noise_faces)
+                'new_people': face_stats['saved']
             },
             'representative_faces': face_stats['faces']
         }
@@ -631,6 +692,42 @@ def find_similar_faces():
             'error': str(e)
         }), 500
 
+@app.route('/api/get-embeddings', methods=['GET'])
+def get_embeddings():
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+    cursor.execute("""
+        SELECT 
+            id,
+            image_name,
+            bbox,
+            cluster_id,
+            face_image_path,
+            created_at
+        FROM face_embeddings
+     
+    """)
+    res = cursor.fetchall()
+    conn.close()
+    return jsonify({
+        'res': res
+    })
+
+@app.route('/api/delete-embeddings', methods=['DELETE'])
+def delete_embeddings():
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+    cursor.execute("""
+        TRUNCATE TABLE face_embeddings
+    """)
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({
+        'status': 'ok'
+    })
 
 @app.route('/api/faces/representative', methods=['GET'])
 def get_representative_faces():
