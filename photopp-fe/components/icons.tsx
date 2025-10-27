@@ -9,18 +9,23 @@ export const Logo: React.FC<IconSvgProps> = ({
   ...props
 }) => (
   <svg
+    width={width} height={height} viewBox="0 0 628 628" xmlns="http://www.w3.org/2000/svg"
     fill="none"
-    height={size || height}
-    viewBox="0 0 32 32"
-    width={size || width}
     {...props}
   >
-    <path
-      clipRule="evenodd"
-      d="M17.6482 10.1305L15.8785 7.02583L7.02979 22.5499H10.5278L17.6482 10.1305ZM19.8798 14.0457L18.11 17.1983L19.394 19.4511H16.8453L15.1056 22.5499H24.7272L19.8798 14.0457Z"
-      fill="currentColor"
-      fillRule="evenodd"
-    />
+    <rect width="628" height="628" rx="130" fill="url(#paint0_linear_189_5427)"/>
+    <path d="M445.478 166L445.478 247.28" stroke="white" strokeWidth="34" strokeLinecap="round"/>
+    <path d="M485.715 206.238L404.435 206.238" stroke="white" strokeWidth="34" strokeLinecap="round"/>
+    <path d="M320.98 166H257.213C240.27 166 224.479 174.581 215.261 188.797L209.437 197.779C201.335 210.273 188.086 218.506 173.296 220.236L165.189 221.185C139.994 224.133 121 245.48 121 270.846V410.538C121 438.152 143.386 460.538 171 460.538H190.208" stroke="white" strokeWidth="34" strokeLinecap="round"/>
+    <path d="M245 261L245 463" stroke="white" strokeWidth="34" strokeLinecap="round"/>
+    <circle cx="313.882" cy="329.678" r="67.0843" stroke="white" strokeWidth="30"/>
+    <path d="M316.778 460.537H457.503C485.117 460.537 507.503 438.151 507.503 410.537L507.502 280.273" stroke="white" strokeWidth="34" strokeLinecap="round"/>
+    <defs>
+    <linearGradient id="paint0_linear_189_5427" x1="1.02186e-06" y1="36.2849" x2="628" y2="591.715" gradientUnits="userSpaceOnUse">
+    <stop stopColor="#1E8AF9"/>
+    <stop offset="1" stopColor="#933ED5"/>
+    </linearGradient>
+    </defs>
   </svg>
 );
 
