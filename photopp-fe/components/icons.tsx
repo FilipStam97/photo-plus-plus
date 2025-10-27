@@ -13,7 +13,7 @@ export const Logo: React.FC<IconSvgProps> = ({
     fill="none"
     {...props}
   >
-    <rect width="628" height="628" rx="130" fill="url(#paint0_linear_189_5427)"/>
+    <rect width={width} height={height} rx="130" fill="url(#paint0_linear_189_5427)"/>
     <path d="M445.478 166L445.478 247.28" stroke="white" strokeWidth="34" strokeLinecap="round"/>
     <path d="M485.715 206.238L404.435 206.238" stroke="white" strokeWidth="34" strokeLinecap="round"/>
     <path d="M320.98 166H257.213C240.27 166 224.479 174.581 215.261 188.797L209.437 197.779C201.335 210.273 188.086 218.506 173.296 220.236L165.189 221.185C139.994 224.133 121 245.48 121 270.846V410.538C121 438.152 143.386 460.538 171 460.538H190.208" stroke="white" strokeWidth="34" strokeLinecap="round"/>
