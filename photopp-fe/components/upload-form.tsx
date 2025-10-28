@@ -1,7 +1,7 @@
 'use client'
 import { Button } from "@heroui/button";
 import { getPresignedUrls, handleUpload, MAX_FILE_SIZE_NEXTJS_ROUTE, validateFiles } from "./../app/_shared/client/minio";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Input } from "@heroui/input";
 import { addToast } from "@heroui/toast";
 
@@ -10,8 +10,9 @@ interface UploadFormProps {
 }
 
 export default function UploadForm({ folderName }: UploadFormProps) {
-    const [loading, setLoading] = useState(false);
-    const [files, setFiles] = useState<File[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null); 
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -28,12 +29,12 @@ export default function UploadForm({ folderName }: UploadFormProps) {
         // Validate files before uploading
         const error = validateFiles(shortFileProps, MAX_FILE_SIZE_NEXTJS_ROUTE);
         if (error) {
-           addToast({
-              title: "Error",
-              description: error,
-              timeout: 3000,
-              color: 'danger',
-            });
+          addToast({
+            title: "Error",
+            description: error,
+            timeout: 3000,
+            color: 'danger',
+          });
           return;
         }
 
@@ -41,16 +42,19 @@ export default function UploadForm({ folderName }: UploadFormProps) {
         const presignedUrls = await getPresignedUrls(shortFileProps, folderName);
         // Upload files using presigned URLs
         const res = await handleUpload(files, presignedUrls, () => {
-            addToast({
-              title: "Success",
-              description: "Files uploaded successfully",
-              timeout: 3000,
-              color: 'success',
-            });
+          addToast({
+            title: "Success",
+            description: "Files uploaded successfully",
+            timeout: 3000,
+            color: 'success',
+          });
           setFiles([]); // Clear files after successful upload
+          if (inputRef.current) {
+            inputRef.current.value = "";
+          }
         });
         // reload
-       // window.location.reload();
+        // window.location.reload();
       }
     } catch (error) {
       addToast({
@@ -75,6 +79,7 @@ export default function UploadForm({ folderName }: UploadFormProps) {
   return (
     <form onSubmit={onSubmit}>
       <Input
+        ref={inputRef}
         className="mb-2"
         type="file"
         multiple
@@ -87,7 +92,7 @@ export default function UploadForm({ folderName }: UploadFormProps) {
         disabled={loading || files.length < 1}
         className="w-full"
       >
-        {loading &&  'Loading...'}
+        {loading && 'Loading...'}
         Upload
       </Button>
     </form>
