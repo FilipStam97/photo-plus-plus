@@ -3,9 +3,9 @@ import { createPresignedUrlToDownload } from "@/app/_shared/server/minio";
 import { NextResponse } from "next/server";
 const bucketName = process.env.MINIO_BUCKET_NAME!;
 
-export async function GET(req: Request, context: { params: { name: string } }) {
-  const { params } = context;
-  const folderName = params.name;
+export async function GET(req: Request, context: { params: Promise<{ name: string }> }) {
+  const { name } = await context.params;
+  const folderName = name;
 
   if (!folderName) {
     return NextResponse.json({ error: "Folder name is required" }, { status: 400 });
