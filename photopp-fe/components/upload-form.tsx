@@ -36,7 +36,7 @@ export default function UploadForm({
     );
     if (incoming.length === 0) return;
 
-    // validacija (koristi tvoju postojeću)
+    // validate using your existing function
     const shortFileProps = incoming.map((f) => ({
       originalFileName: f.name,
       fileSize: f.size,
@@ -44,7 +44,7 @@ export default function UploadForm({
     const error = validateFiles(shortFileProps, MAX_FILE_SIZE_NEXTJS_ROUTE);
     if (error) {
       addToast({
-        title: "Nevalidni fajlovi",
+        title: "Invalid files",
         description: error,
         timeout: 3500,
         color: "danger",
@@ -52,7 +52,7 @@ export default function UploadForm({
       return;
     }
 
-    // spoji nove sa postojećima, izbegni duplikate po imenu+veličini
+    // merge new with existing, prevent duplicates
     setFiles((prev) => {
       const key = (f: File) => `${f.name}-${f.size}`;
       const existing = new Set(prev.map(key));
@@ -87,7 +87,7 @@ export default function UploadForm({
     setIsDragging(false);
   };
 
-  // thumbnails (URL.createObjectURL cleanup)
+  // thumbnails (cleanup URLs)
   const previews = useMemo(
     () => files.map((f) => ({ file: f, url: URL.createObjectURL(f) })),
     [files]
@@ -128,8 +128,8 @@ export default function UploadForm({
 
       await handleUpload(files, presignedUrls, () => {
         addToast({
-          title: "Uspešno",
-          description: "Fajlovi su otpremljeni.",
+          title: "Upload complete",
+          description: "Files uploaded successfully.",
           timeout: 3000,
           color: "success",
         });
@@ -139,8 +139,8 @@ export default function UploadForm({
     } catch (err) {
       console.error(err);
       addToast({
-        title: "Greška",
-        description: "Došlo je do nepoznate greške pri uploadu.",
+        title: "Upload error",
+        description: "An unexpected error occurred while uploading.",
         timeout: 3500,
         color: "danger",
       });
@@ -159,7 +159,7 @@ export default function UploadForm({
         onDragLeave={onDragLeave}
         role="button"
         tabIndex={0}
-        aria-label="Izaberi ili prevuci slike"
+        aria-label="Select or drag images"
         className={[
           "flex flex-col items-center justify-center gap-2",
           "rounded-2xl border-2 border-dashed bg-neutral-900/60",
@@ -171,15 +171,15 @@ export default function UploadForm({
       >
         <div className="text-sm text-neutral-300">
           {isDragging
-            ? "Pusti fajlove ovde"
-            : "Prevuci slike ili klikni za izbor"}
+            ? "Drop files here"
+            : "Drag and drop images or click to select"}
         </div>
         <div className="text-xs text-neutral-400">
-          Podržano: PNG, JPG, JPEG, BMP
-          {/* • max{" "}{Math.round(MAX_FILE_SIZE_NEXTJS_ROUTE / (1024 * 1024))}MB po fajlu */}
+          Supported: PNG, JPG, JPEG, BMP
+          {/* • max{" "}{Math.round(MAX_FILE_SIZE_NEXTJS_ROUTE / (1024 * 1024))}MB per file */}
         </div>
 
-        {/* Skriveni <input type="file" /> */}
+        {/* Hidden input */}
         <Input
           ref={inputRef}
           type="file"
@@ -189,7 +189,7 @@ export default function UploadForm({
           className="hidden"
         />
         <Button size="sm" variant="flat" onPress={onPickClick}>
-          Izaberi fajlove
+          Choose Files
         </Button>
       </div>
 
@@ -197,12 +197,12 @@ export default function UploadForm({
       <div className="mt-3 flex items-center justify-between text-sm">
         <div className="text-neutral-400">
           {files.length > 0
-            ? `${files.length} fajl(a) • ${totalSizeMB} MB ukupno`
-            : "Nijedan fajl nije izabran"}
+            ? `${files.length} file(s) • ${totalSizeMB} MB total`
+            : "No files selected"}
         </div>
         {files.length > 0 && (
           <Button size="sm" variant="light" onPress={clearAll}>
-            Očisti
+            Clear
           </Button>
         )}
       </div>
@@ -229,7 +229,7 @@ export default function UploadForm({
                 type="button"
                 onClick={() => removeFile(file.name, file.size)}
                 className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-1 text-xs text-white hover:bg-black/80"
-                aria-label="Ukloni fajl"
+                aria-label="Remove file"
               >
                 ✕
               </button>
