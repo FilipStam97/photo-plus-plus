@@ -12,7 +12,6 @@ export async function POST(req: Request) {
     // get the files from the request body
     const { files, folderName } = await req.json() as { files: ShortFileProp[], folderName?: string };
 
-    console.log({ files });
 
     if (!files?.length) {
       return new NextResponse("No files to upload", { status: 400 });
@@ -46,14 +45,14 @@ export async function POST(req: Request) {
         })
       );
     }
-    console.log({ presignedUrls });
+    // console.log({ presignedUrls });
 
     const publicUrls = presignedUrls.map((presignedUrl) => {
       const publicUrl = `http${process.env.MINIO_SSL === "true" ? "s" : ""}://${process.env.MINIO_ENDPOINT}:${process.env.MINIO_PORT}/${process.env.MINIO_BUCKET_NAME}/${presignedUrl.fileNameInBucket}`;
       return { ...presignedUrl, publicUrl };
     });
 
-    console.log({ publicUrls });
+    // console.log({ publicUrls });
 
     //Get the file name in bucket from the database
 
@@ -76,7 +75,7 @@ export async function POST(req: Request) {
       })
     });
 
-
+    console.log(flaskRes)
     
     if (!flaskRes.ok) {
       throw new Error("Flask API error");
