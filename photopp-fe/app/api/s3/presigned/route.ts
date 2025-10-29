@@ -68,7 +68,7 @@ export async function POST(req: Request) {
     });
 
     //TODO: ovo ne mora da se zavrsi da bi se zavrsio request, moze da se doda da se to odradi u pozadini dok ostalo radi
-    const flaskRes = await fetch("http://127.0.0.1:5000/api/cluster-images" , {
+    const flaskRes = await fetch("http://127.0.0.1:5001/api/cluster-images" , {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

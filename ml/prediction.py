@@ -4,7 +4,6 @@ import base64
 import datetime
 from io import BytesIO
 import io
-import json
 import cv2
 import os
 import face_recognition
@@ -377,15 +376,12 @@ def cluster_images(bucket_name, min_cluster_size=2, tolerance=0.6):
         print(f"Found {len(existing_face_data)} existing face embeddings")
         
         # 3. Izvuci sve slike iz bucket-a
-        print("Fetching all images from MinIO...")
+        print("Fetching all images from MinIO...", bucket_name)
         all_objects = client.list_objects(bucket_name, recursive=True)
         
         new_images = []
         for obj in all_objects:
             if obj.object_name.startswith('faces/') or obj.object_name.endswith('/'):
-                continue
-            
-            if not obj.object_name.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp')):
                 continue
             
             if obj.object_name not in existing_images:
@@ -401,22 +397,35 @@ def cluster_images(bucket_name, min_cluster_size=2, tolerance=0.6):
             try:
                 response = client.get_object(bucket_name, image_name)
                 image_data = response.read()
-                image = Image.open(io.BytesIO(image_data))
-                
-                if image.mode != 'RGB':
-                    image = image.convert('RGB')
-                
-                image_array = np.array(image)
-                
-                face_locations = face_recognition.face_locations(image_array)
-                face_encodings = face_recognition.face_encodings(image_array, face_locations)
-                
+                response.close()
+                response.release_conn()
+
+                # Decode image from bytes using OpenCV (works even without extension)
+                np_bytes = np.frombuffer(image_data, np.uint8)
+                image_bgr = cv2.imdecode(np_bytes, cv2.IMREAD_COLOR)
+                if image_bgr is None:
+                    print(f"Could not decode image {image_name}")
+                    continue
+
+                # Convert BGR → RGB (face_recognition expects RGB)
+                image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+
+                # Detect faces and compute embeddings
+                face_locations = face_recognition.face_locations(image_rgb)
+                face_encodings = face_recognition.face_encodings(image_rgb, face_locations)
+
+                if not face_encodings:
+                    print(f"No faces found in {image_name}")
+                    continue
+
+                # For each detected face
                 for encoding, location in zip(face_encodings, face_locations):
                     top, right, bottom, left = location
-                    
-                    # Cropuj lice
-                    face_image = image.crop((left, top, right, bottom))
-                    
+
+                    # Crop the face (convert NumPy → PIL for easy cropping)
+                    image_pil = Image.fromarray(image_rgb)
+                    face_image = image_pil.crop((left, top, right, bottom))
+
                     new_faces.append({
                         'image_name': image_name,
                         'embedding': encoding,
@@ -429,12 +438,9 @@ def cluster_images(bucket_name, min_cluster_size=2, tolerance=0.6):
                         },
                         'is_new': True
                     })
-                
-                response.close()
-                response.release_conn()
-                
+
             except Exception as e:
-                print(f"Error processing {image_name}: {e}")
+                print(f"❌ Error processing {image_name}: {e}")
                 continue
         
         print(f"Detected {len(new_faces)} faces in new images")
@@ -920,4 +926,4 @@ def is_similar(new_emb, existing_emb, threshold=0.75):
     return similarity >= threshold
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
+    app.run(debug=True, host='0.0.0.0', port=5001, use_reloader=False)
