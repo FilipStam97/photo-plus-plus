@@ -39,6 +39,7 @@ model FaceEmbedding {
   isRepresentative Boolean  @default(false) @map("is_representative")
   faceImagePath    String?  @map("face_image_path")
   createdAt        DateTime @default(now()) @map("created_at")
+  personName       String?  @map("person_name")
   
   @@index([bucketName])
   @@index([clusterId])
