@@ -15,6 +15,10 @@ import numpy as np
 from PIL import Image
 import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values, Json
+import threading
+import logging
+
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 host = os.getenv("MINIO_HOST", "localhost") #lokalno je localhost, a ovako preko dockera treba da bude "minio"
@@ -560,6 +564,23 @@ def cluster_images(bucket_name, min_cluster_size=2, tolerance=0.6):
         print(f"Error during clustering: {e}")
         raise e
     
+def start_cluster_job(bucket_name: str, min_cluster_size: int = 2, tolerance: float = 0.6):
+    """
+    Runs cluster_images() in its own thread.
+    This can be reused by any route or scheduled job.
+    """
+    def _worker():
+        try:
+            logger.info(f"Starting cluster_images for bucket={bucket_name}")
+            result = cluster_images(bucket_name, min_cluster_size, tolerance)
+            logger.info(f"Cluster job done for bucket={bucket_name}: {result}")
+        except Exception as e:
+            logger.exception(f"Cluster job failed for bucket={bucket_name}: {e}")
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    return t
+    
 @app.route('/api/cluster-images', methods=['POST'])
 def api_cluster_images():
     """
@@ -581,10 +602,15 @@ def api_cluster_images():
         
         min_cluster_size = 2
         tolerance = 0.6
+
+        # fire-and-forget
+        start_cluster_job(bucket_name, min_cluster_size, tolerance)
         
-        result = cluster_images(bucket_name, min_cluster_size, tolerance)
-        
-        return jsonify(result), 200
+        # 202 Accepted = work started, still processing
+        return jsonify({
+            "accepted": True,
+            "message": "Clustering started in background."
+        }), 202
         
     except Exception as e:
         return jsonify({
@@ -894,4 +920,4 @@ def is_similar(new_emb, existing_emb, threshold=0.75):
     return similarity >= threshold
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
