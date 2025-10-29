@@ -1,18 +1,27 @@
-'use client'
+"use client";
 import { Button } from "@heroui/button";
-import { getPresignedUrls, handleUpload, MAX_FILE_SIZE_NEXTJS_ROUTE, validateFiles } from "./../app/_shared/client/minio";
+import {
+  getPresignedUrls,
+  handleUpload,
+  MAX_FILE_SIZE_NEXTJS_ROUTE,
+  validateFiles,
+} from "./../app/_shared/client/minio";
 import { useRef, useState } from "react";
 import { Input } from "@heroui/input";
 import { addToast } from "@heroui/toast";
-
+import type { Dispatch, SetStateAction } from "react";
 interface UploadFormProps {
   folderName?: string;
+  setTriggerFetch?: Dispatch<SetStateAction<boolean>>;
 }
 
-export default function UploadForm({ folderName }: UploadFormProps) {
+export default function UploadForm({
+  folderName,
+  setTriggerFetch,
+}: UploadFormProps) {
   const [loading, setLoading] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null); 
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -27,28 +36,32 @@ export default function UploadForm({ folderName }: UploadFormProps) {
         }));
 
         // Validate files before uploading
-        const error = validateFiles(shortFileProps, MAX_FILE_SIZE_NEXTJS_ROUTE);
-        if (error) {
-          addToast({
-            title: "Error",
-            description: error,
-            timeout: 3000,
-            color: 'danger',
-          });
-          return;
-        }
+        // const error = validateFiles(shortFileProps, MAX_FILE_SIZE_NEXTJS_ROUTE);
+        // if (error) {
+        //   addToast({
+        //     title: "Error",
+        //     description: error,
+        //     timeout: 3000,
+        //     color: "danger",
+        //   });
+        //   return;
+        // }
 
         // Get presigned URLs from the API
-        const presignedUrls = await getPresignedUrls(shortFileProps, folderName);
+        const presignedUrls = await getPresignedUrls(
+          shortFileProps,
+          folderName
+        );
         // Upload files using presigned URLs
         const res = await handleUpload(files, presignedUrls, () => {
           addToast({
             title: "Success",
             description: "Files uploaded successfully",
             timeout: 3000,
-            color: 'success',
+            color: "success",
           });
           setFiles([]); // Clear files after successful upload
+          setTriggerFetch?.((prev) => !prev);
           if (inputRef.current) {
             inputRef.current.value = "";
           }
@@ -61,7 +74,7 @@ export default function UploadForm({ folderName }: UploadFormProps) {
         title: "Error",
         description: "Unknown error",
         timeout: 3000,
-        color: 'danger',
+        color: "danger",
       });
       console.error(error);
     } finally {
@@ -85,6 +98,7 @@ export default function UploadForm({ folderName }: UploadFormProps) {
         multiple
         disabled={loading}
         onChange={handleFileChange}
+        accept=".png, .jpg, .jpeg, .bmp"
       />
 
       <Button
@@ -92,7 +106,7 @@ export default function UploadForm({ folderName }: UploadFormProps) {
         disabled={loading || files.length < 1}
         className="w-full"
       >
-        {loading && 'Loading...'}
+        {loading && "Loading..."}
         Upload
       </Button>
     </form>
