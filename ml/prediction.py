@@ -929,4 +929,4 @@ def is_similar(new_emb, existing_emb, threshold=0.75):
     return similarity >= threshold
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5001, use_reloader=False)
+    app.run(debug=True, host='0.0.0.0', port=5000)
