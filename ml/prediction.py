@@ -610,13 +610,16 @@ def api_cluster_images():
         tolerance = 0.6
 
         # fire-and-forget
-        start_cluster_job(bucket_name, min_cluster_size, tolerance)
+        # start_cluster_job(bucket_name, min_cluster_size, tolerance)
+        try:
+            logger.info(f"Starting cluster_images for bucket={bucket_name}")
+            result = cluster_images(bucket_name, min_cluster_size, tolerance)
+            logger.info(f"Cluster job done for bucket={bucket_name}: {result}")
+        except Exception as e:
+            logger.exception(f"Cluster job failed for bucket={bucket_name}: {e}")
         
         # 202 Accepted = work started, still processing
-        return jsonify({
-            "accepted": True,
-            "message": "Clustering started in background."
-        }), 202
+        return jsonify(result), 200
         
     except Exception as e:
         return jsonify({
