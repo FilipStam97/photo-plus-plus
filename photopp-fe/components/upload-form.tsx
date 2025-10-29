@@ -23,10 +23,8 @@ export default function UploadForm({
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // ---- helpers
   const onPickClick = () => inputRef.current?.click();
 
   const onFilesSelected = (fileList: FileList | null) => {
@@ -36,7 +34,6 @@ export default function UploadForm({
     );
     if (incoming.length === 0) return;
 
-    // validate using your existing function
     const shortFileProps = incoming.map((f) => ({
       originalFileName: f.name,
       fileSize: f.size,
@@ -51,81 +48,65 @@ export default function UploadForm({
       });
       return;
     }
-
-    // merge new with existing, prevent duplicates
     setFiles((prev) => {
       const key = (f: File) => `${f.name}-${f.size}`;
       const existing = new Set(prev.map(key));
-      const merged = [
-        ...prev,
-        ...incoming.filter((f) => !existing.has(key(f))),
-      ];
-      return merged;
+      return [...prev, ...incoming.filter((f) => !existing.has(key(f)))];
     });
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) =>
     onFilesSelected(e.target.files);
 
-  // drag & drop
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
     onFilesSelected(e.dataTransfer.files);
   };
-
   const onDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (!isDragging) setIsDragging(true);
   };
-
   const onDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
   };
 
-  // thumbnails (cleanup URLs)
   const previews = useMemo(
     () => files.map((f) => ({ file: f, url: URL.createObjectURL(f) })),
     [files]
   );
-  useEffect(() => {
-    return () => previews.forEach((p) => URL.revokeObjectURL(p.url));
-  }, [previews]);
+  useEffect(
+    () => () => previews.forEach((p) => URL.revokeObjectURL(p.url)),
+    [previews]
+  );
 
   const removeFile = (name: string, size: number) =>
     setFiles((prev) =>
       prev.filter((f) => !(f.name === name && f.size === size))
     );
-
   const clearAll = () => {
     setFiles([]);
     if (inputRef.current) inputRef.current.value = "";
   };
-
   const totalSizeMB = useMemo(
     () => (files.reduce((s, f) => s + f.size, 0) / (1024 * 1024)).toFixed(2),
     [files]
   );
 
-  // ---- submit
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (files.length === 0) return;
-
     try {
       setLoading(true);
-
       const shortFileProps = files.map((file) => ({
         originalFileName: file.name,
         fileSize: file.size,
       }));
-
       const presignedUrls = await getPresignedUrls(shortFileProps, folderName);
-
       await handleUpload(files, presignedUrls, () => {
         addToast({
           title: "Upload complete",
@@ -151,7 +132,6 @@ export default function UploadForm({
 
   return (
     <form onSubmit={onSubmit} className="w-full max-w-xl mx-auto">
-      {/* Dropzone */}
       <div
         onClick={onPickClick}
         onDrop={onDrop}
@@ -161,25 +141,23 @@ export default function UploadForm({
         tabIndex={0}
         aria-label="Select or drag images"
         className={[
-          "flex flex-col items-center justify-center gap-2",
-          "rounded-2xl border-2 border-dashed bg-neutral-900/60",
-          "px-6 py-8 text-center transition",
+          "flex flex-col items-center justify-center gap-2 px-6 py-8 text-center transition rounded-2xl border-2 border-dashed",
+          "bg-gray-50 border-gray-300 text-gray-700 shadow-sm",
+          "dark:bg-neutral-900 dark:border-neutral-700 dark:text-gray-200 dark:shadow-none",
           isDragging
-            ? "border-blue-500 bg-blue-500/10"
-            : "border-neutral-700 hover:border-neutral-500",
+            ? "border-blue-400 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-500"
+            : "hover:border-gray-400 dark:hover:border-neutral-600",
         ].join(" ")}
       >
-        <div className="text-sm text-neutral-300">
+        <div className="text-sm font-medium">
           {isDragging
             ? "Drop files here"
             : "Drag and drop images or click to select"}
         </div>
-        <div className="text-xs text-neutral-400">
+        <div className="text-xs text-gray-500 dark:text-gray-500">
           Supported: PNG, JPG, JPEG, BMP
-          {/* • max{" "}{Math.round(MAX_FILE_SIZE_NEXTJS_ROUTE / (1024 * 1024))}MB per file */}
         </div>
 
-        {/* Hidden input */}
         <Input
           ref={inputRef}
           type="file"
@@ -188,47 +166,61 @@ export default function UploadForm({
           onChange={handleFileInputChange}
           className="hidden"
         />
-        <Button size="sm" variant="flat" onPress={onPickClick}>
+
+        <Button
+          size="sm"
+          onPress={onPickClick}
+          className="px-3 py-1 rounded-lg text-sm font-medium
+                     bg-gray-200 text-gray-800 hover:bg-gray-300
+                     dark:bg-neutral-700 dark:text-gray-100 dark:hover:bg-neutral-600"
+        >
           Choose Files
         </Button>
       </div>
 
-      {/* Info bar */}
-      <div className="mt-3 flex items-center justify-between text-sm">
-        <div className="text-neutral-400">
+      <div className="mt-3 flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
+        <div>
           {files.length > 0
             ? `${files.length} file(s) • ${totalSizeMB} MB total`
             : "No files selected"}
         </div>
         {files.length > 0 && (
-          <Button size="sm" variant="light" onPress={clearAll}>
+          <Button
+            size="sm"
+            variant="light"
+            onPress={clearAll}
+            className="text-gray-700 dark:text-gray-300"
+          >
             Clear
           </Button>
         )}
       </div>
 
-      {/* Previews grid */}
       {files.length > 0 && (
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
           {previews.map(({ file, url }) => (
             <div
               key={`${file.name}-${file.size}`}
-              className="relative overflow-hidden rounded-xl border border-neutral-800"
+              className="relative overflow-hidden rounded-xl border bg-white shadow-sm
+                         border-gray-200 dark:border-neutral-800 dark:bg-neutral-900 dark:shadow-none"
             >
               <img
                 src={url}
                 alt={file.name}
-                className="h-32 w-full object-cover"
+                className="h-32 w-full object-cover rounded-t-xl"
               />
-              <div className="absolute inset-x-0 bottom-0 bg-black/50 px-2 py-1">
-                <p className="truncate text-[11px] text-neutral-200">
-                  {file.name}
-                </p>
+              <div
+                className="absolute inset-x-0 bottom-0 truncate text-[11px] px-2 py-1
+                              bg-white/90 text-gray-700 dark:bg-black/50 dark:text-gray-200"
+              >
+                {file.name}
               </div>
               <button
                 type="button"
                 onClick={() => removeFile(file.name, file.size)}
-                className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-1 text-xs text-white hover:bg-black/80"
+                className="absolute right-2 top-2 rounded-full px-2 py-1 text-xs
+                           bg-white/70 text-gray-700 hover:bg-white
+                           dark:bg-black/50 dark:text-gray-300 dark:hover:bg-black/70"
                 aria-label="Remove file"
               >
                 ✕
@@ -238,11 +230,12 @@ export default function UploadForm({
         </div>
       )}
 
-      {/* Submit */}
       <Button
         type="submit"
         disabled={loading || files.length === 0}
-        className="mt-4 w-full"
+        className="mt-4 w-full rounded-2xl font-medium
+                   bg-gray-200 text-gray-800 hover:bg-gray-300
+                   dark:bg-neutral-800 dark:text-gray-100 dark:hover:bg-neutral-700"
       >
         {loading ? "Uploading..." : "Upload"}
       </Button>
