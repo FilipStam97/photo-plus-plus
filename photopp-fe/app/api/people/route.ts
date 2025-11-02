@@ -47,4 +47,26 @@ export async function GET(req: Request) {
     console.error("Error fetching presigned URLs:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
+
+
+}
+
+export async function POST(req: Request) {
+    const { cluster_id } = await req.json() as { cluster_id: number };
+    try {
+    const flaskRes = await fetch("http://127.0.0.1:5001/api/faces/find-similar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bucket_name: process.env.MINIO_BUCKET_NAME, cluster_id }),
+    }).catch(err => console.error("Flask clustering failed:", err));
+
+    if (!flaskRes?.ok) {
+      throw new Error("Flask API error");
+    }
+    const data = await flaskRes.json(); 
+        return NextResponse.json( data);
+    } catch (error) {
+        console.error(error);
+        return new NextResponse("Internal server error", { status: 500 });
+    }
 }

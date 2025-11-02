@@ -74,8 +74,17 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   try {
-    //get file names from db
+    const url = new URL(req.url);
+    const fileNames = url.searchParams.getAll("fileNames");
+
     const files = await prisma.file.findMany({
+      where: fileNames && fileNames.length > 0
+    ? {
+        fileName: {
+          in: fileNames,
+        },
+      }
+    : undefined, 
       select: { fileName: true },
     });
 
