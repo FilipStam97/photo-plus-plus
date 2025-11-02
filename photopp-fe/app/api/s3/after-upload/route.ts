@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     });
 
     // Kick off Flask clustering in background
-    fetch("http://127.0.0.1:5000/api/cluster-images", {
+    fetch("http://127.0.0.1:5001/api/cluster-images", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ bucket_name: process.env.MINIO_BUCKET_NAME }),

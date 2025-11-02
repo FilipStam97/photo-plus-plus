@@ -28,7 +28,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Expose Flask port
-EXPOSE 5000
+EXPOSE 5001
+ENV PYTHONUNBUFFERED=1
 
 # Run Flask app
-CMD ["python", "cluster_photos.py"]
+CMD ["python", "-u", "cluster_photos.py"]

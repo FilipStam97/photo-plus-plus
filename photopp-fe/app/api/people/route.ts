@@ -18,7 +18,7 @@ export async function GET(req: Request) {
     //   return NextResponse.json([], { status: 200 });
     // }
 
-    const flaskRes = await fetch("http://127.0.0.1:5000/api/faces/clusters?bucket_name=" + bucketName , {
+    const flaskRes = await fetch("http://127.0.0.1:5001/api/faces/clusters?bucket_name=" + bucketName , {
       method: "GET",
       headers: { "Content-Type": "application/json" },
     });

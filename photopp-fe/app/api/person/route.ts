@@ -8,7 +8,7 @@ export async function GET() {
         //     select: { imageName: true, personName: true },
         //     where: { isRepresentative: true }
         // });
-        const flaskRes = await fetch("http://127.0.0.1:5000/api/faces/clusters?bucket_name=test"  , {
+        const flaskRes = await fetch("http://127.0.0.1:5001/api/faces/clusters?bucket_name=test"  , {
             method: "GET",
             });
 

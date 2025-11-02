@@ -21,15 +21,16 @@ load_dotenv()
 app = Flask(__name__)
 # MinIO client
 client = Minio(
-    os.getenv('MINIO_ENDPOINT', 'localhost:9000'),
+    os.getenv('MINIO_ENDPOINT', 'minio:9000'),
     access_key=os.getenv('MINIO_ACCESS_KEY', "admin"),
     secret_key=os.getenv('MINIO_SECRET_KEY', "admin123"),
     secure=os.getenv('MINIO_SECURE', 'false').lower() == 'true'
 )
 
 # Qdrant client
-qdrant = QdrantClient(url=os.getenv('QDRANT_URL', 'http://localhost:6333'))
+qdrant = QdrantClient(host="qdrant", port=6333)
 COLLECTION_NAME = "face_embeddings"
+
 BUCKET_NAME = "test"
 
 # Initialize collection
@@ -587,4 +588,4 @@ def get_all_clusters():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5001)
