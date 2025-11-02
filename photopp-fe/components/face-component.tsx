@@ -3,12 +3,12 @@ import { addToast } from "@heroui/toast";
 import { useState } from "react";
 
 interface FaceComponentProps {
-    url: string;
+    cropped_image: string;
     originalName?: string;
     personName?: string;
 }
 
-export default function FaceComponent({ url, originalName, personName = "" }: FaceComponentProps) {
+export default function FaceComponent({ cropped_image, originalName, personName = "" }: FaceComponentProps) {
     const [name, setName] = useState(personName);
     const [showTick, setShowTick] = useState(false);
 
@@ -47,9 +47,14 @@ export default function FaceComponent({ url, originalName, personName = "" }: Fa
     };
     return (
         <div className="relative w-32 h-32 overflow-hidden border border-gray-300 shadow-md">
-            <img
-                src={url}
+            {/* <img
+                src={cropped_image}
                 alt={originalName || "Face"}
+                className="object-cover w-full h-full"
+            /> */}
+
+             <img
+                src={`data:image/jpeg;base64,${cropped_image}`}
                 className="object-cover w-full h-full"
             />
 

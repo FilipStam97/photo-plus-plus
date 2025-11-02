@@ -16,10 +16,17 @@ import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values, Json
 import threading
 import logging
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue
+
+
 
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+qdrant = QdrantClient(url="http://localhost:6333")
+
 host = os.getenv("MINIO_HOST", "localhost") #lokalno je localhost, a ovako preko dockera treba da bude "minio"
 port = os.getenv("MINIO_PORT", "9000")
 access = os.getenv("MINIO_ACCESS_KEY", "admin")
@@ -35,6 +42,17 @@ client = Minio(
     secret_key=secret,
     secure=secure
 )
+
+
+try:
+    qdrant.create_collection(
+        collection_name="face_embeddings",
+        vectors_config=VectorParams(size=128, distance=Distance.COSINE)
+    )
+except Exception as e:
+    print(f"Collection already exists: {e}")
+
+
 BUCKET_NAME = "test"
 
 def get_db_connection():
@@ -836,8 +854,8 @@ def delete_embeddings():
         'status': 'ok'
     })
 
-@app.route('/api/faces/representative', methods=['GET'])
-def get_representative_faces():
+@app.route('/api/faces/representative2', methods=['GET'])
+def get_representative_faces2():
     """
     Vraća sve representative faces za bucket
     
@@ -928,5 +946,136 @@ def is_similar(new_emb, existing_emb, threshold=0.75):
     similarity = cosine_similarity(new_emb, existing_emb)
     return similarity >= threshold
 
+
+
+@app.route('/api/faces/save-embedding', methods=['POST'])
+def save_face_embedding():
+    """Sačuvaj face embedding u Qdrant"""
+    data = request.json
+    
+    point = PointStruct(
+        id=data.get('face_id'),  # ili generiši UUID
+        vector=data['embedding'],
+        payload={
+            'bucket_name': data['bucket_name'],
+            'image_name': data['image_name'],
+            'bbox': data['bbox'],
+            'cluster_id': data.get('cluster_id'),
+            'is_representative': data.get('is_representative', False),
+            'face_image_path': data.get('face_image_path')
+        }
+    )
+    
+    qdrant.upsert(
+        collection_name="face_embeddings",
+        points=[point]
+    )
+    
+    return jsonify({'success': True, 'face_id': data.get('face_id')})
+
+
+@app.route('/api/faces/find-similar-2', methods=['POST'])
+def find_similar_faces2():
+    """Pronađi slične face embeddings - SUPER BRZO!"""
+    data = request.json
+    bucket_name = data['bucket_name']
+    face_image_path = data['face_image_path']
+    tolerance = data.get('tolerance', 0.6)
+    
+    # 1. Pronađi reference embedding
+    ref_results = qdrant.scroll(
+        collection_name="face_embeddings",
+        scroll_filter=Filter(
+            must=[
+                FieldCondition(key="bucket_name", match=MatchValue(value=bucket_name)),
+                FieldCondition(key="face_image_path", match=MatchValue(value=face_image_path)),
+                FieldCondition(key="is_representative", match=MatchValue(value=True))
+            ]
+        ),
+        limit=1
+    )
+    
+    if not ref_results[0]:
+        return jsonify({'error': 'Face not found'}), 404
+    
+    reference_point = ref_results[0][0]
+    reference_vector = reference_point.vector
+    cluster_id = reference_point.payload.get('cluster_id')
+    
+    # 2. Pretraga - INSTANT!
+    search_filter = Filter(
+        must=[
+            FieldCondition(key="bucket_name", match=MatchValue(value=bucket_name)),
+            FieldCondition(key="is_representative", match=MatchValue(value=False))
+        ]
+    )
+    
+    # Dodaj cluster filter ako postoji
+    if cluster_id is not None:
+        search_filter.must.append(
+            FieldCondition(key="cluster_id", match=MatchValue(value=cluster_id))
+        )
+    
+    results = qdrant.search(
+        collection_name="face_embeddings",
+        query_vector=reference_vector,
+        query_filter=search_filter,
+        limit=1000,
+        score_threshold=1 - tolerance  # Cosine similarity threshold
+    )
+    
+    # Grupiši po slikama
+    images_dict = {}
+    for hit in results:
+        img_name = hit.payload['image_name']
+        if img_name not in images_dict:
+            images_dict[img_name] = {
+                'image_name': img_name,
+                'faces': []
+            }
+        images_dict[img_name]['faces'].append({
+            'face_id': hit.id,
+            'bbox': hit.payload['bbox'],
+            'similarity': hit.score
+        })
+    
+    return jsonify({
+        'success': True,
+        'method': 'vector_search',
+        'total_images': len(images_dict),
+        'images': list(images_dict.values())
+    })
+
+
+@app.route('/api/faces/representative', methods=['GET'])
+def get_representative_faces():
+    """Dobavi sve representative faces"""
+    bucket_name = request.args.get('bucket_name')
+    
+    results = qdrant.scroll(
+        collection_name="face_embeddings",
+        scroll_filter=Filter(
+            must=[
+                FieldCondition(key="bucket_name", match=MatchValue(value=bucket_name)),
+                FieldCondition(key="is_representative", match=MatchValue(value=True))
+            ]
+        ),
+        limit=10000
+    )
+    
+    faces = []
+    for point in results[0]:
+        faces.append({
+            'face_id': point.id,
+            'face_image_path': point.payload['face_image_path'],
+            'cluster_id': point.payload.get('cluster_id'),
+            'image_name': point.payload['image_name']
+        })
+    
+    return jsonify({
+        'success': True,
+        'total_faces': len(faces),
+        'faces': faces
+    })
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

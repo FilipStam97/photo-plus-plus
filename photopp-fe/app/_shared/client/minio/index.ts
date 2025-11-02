@@ -1,8 +1,8 @@
 import type { ShortFileProp, PresignedUrlProp } from "../../server/minio";
 
-export const MAX_FILE_SIZE_NEXTJS_ROUTE = 10;
+export const MAX_FILE_SIZE_NEXTJS_ROUTE = 20;
 export const MAX_FILE_SIZE_S3_ENDPOINT = 100;
-export const FILE_NUMBER_LIMIT = 10;
+export const FILE_NUMBER_LIMIT = 100;
 
 /**
  * Gets presigned urls for uploading files to S3
@@ -50,6 +50,12 @@ export const handleUpload = async (
     alert("Upload failed");
     return;
   }
+
+  await fetch("/api/s3/after-upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ presignedUrls: presignedUrls }),
+  });
 
   onUploadSuccess();
 };

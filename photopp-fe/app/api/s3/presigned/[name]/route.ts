@@ -2,7 +2,9 @@
 import { createPresignedUrlToDownload } from "@/app/_shared/server/minio";
 import { NextResponse } from "next/server";
 const bucketName = process.env.MINIO_BUCKET_NAME!;
-
+import prisma
+ from "@/app/_shared/server/prisma";
+ 
 export async function GET(req: Request, context: { params: Promise<{ name: string }> }) {
   const { name } = await context.params;
   const folderName = name;

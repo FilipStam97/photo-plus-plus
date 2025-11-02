@@ -106,6 +106,7 @@ export default function UploadForm({
         originalFileName: file.name,
         fileSize: file.size,
       }));
+      console.log(shortFileProps)
       const presignedUrls = await getPresignedUrls(shortFileProps, folderName);
       await handleUpload(files, presignedUrls, () => {
         addToast({

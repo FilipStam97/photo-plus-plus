@@ -31,4 +31,4 @@ COPY . .
 EXPOSE 5000
 
 # Run Flask app
-CMD ["python", "prediction.py"]
+CMD ["python", "cluster_photos.py"]

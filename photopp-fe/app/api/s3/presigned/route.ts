@@ -36,51 +36,31 @@ export async function POST(req: Request) {
           });
 
           // add presigned url to the list
-          presignedUrls.push({
+           presignedUrls.push({
             fileNameInBucket: pathInBucket,
             originalFileName: file.originalFileName,
             fileSize: file.fileSize,
-            url,
+            url
           });
         })
       );
     }
     // console.log({ presignedUrls });
 
-    const publicUrls = presignedUrls.map((presignedUrl) => {
-      const publicUrl = `http${process.env.MINIO_SSL === "true" ? "s" : ""}://${process.env.MINIO_ENDPOINT}:${process.env.MINIO_PORT}/${process.env.MINIO_BUCKET_NAME}/${presignedUrl.fileNameInBucket}`;
-      return { ...presignedUrl, publicUrl };
-    });
 
-    // console.log({ publicUrls });
+    //   //TODO: ovo ne mora da se zavrsi da bi se zavrsio request, moze da se doda da se to odradi u pozadini dok ostalo radi
+    //   const flaskRes = await fetch("http://127.0.0.1:5000/api/cluster-images" , {
+    //     method: "POST",
+    //     headers: { "Content-Type": "application/json" },
+    //     body: JSON.stringify({
+    //       bucket_name: process.env.MINIO_BUCKET_NAME
+    //     })
+    //   });
 
-    //Get the file name in bucket from the database
-
-    const saveFilesInfo = await prisma.file.createMany({
-      data: publicUrls.map((presignedUrl: any) => ({
-        bucket: process.env.MINIO_BUCKET_NAME,
-        fileName: presignedUrl.fileNameInBucket,
-        originalName: presignedUrl.originalFileName,
-        size: presignedUrl.fileSize,
-        url: presignedUrl.publicUrl,
-      })),
-    });
-
-    //TODO: ovo ne mora da se zavrsi da bi se zavrsio request, moze da se doda da se to odradi u pozadini dok ostalo radi
-    const flaskRes = await fetch("http://127.0.0.1:5001/api/cluster-images" , {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        bucket_name: "test" 
-      })
-    });
-
-    console.log(flaskRes)
-    
-    if (!flaskRes.ok) {
-      throw new Error("Flask API error");
-    }
-    const flaskData = await flaskRes.json();
+    // if (!flaskRes.ok) {
+    //   throw new Error("Flask API error");
+    // }
+    // const flaskData = await flaskRes.json();
 
     //save face embeddings in database
     // const newEmbedding = await prisma.faceEmbedding.createMany(normalizeEmbeddings);

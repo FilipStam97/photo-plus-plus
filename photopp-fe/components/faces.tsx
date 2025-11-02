@@ -4,7 +4,7 @@ import { addToast } from "@heroui/toast";
 import FaceComponent from "./face-component";
 
 export default function FacesGallery() {
-    const [files, setFiles] = useState<{ url: string; originalName: string }[]>([]);
+    const [files, setFiles] = useState<{ cropped_face: string, cluster_id :number, face_count: number, sample_image: string}[]>([]);
     const [people, setPeople] = useState<{ imageName: string; personName: string }[]>([]);
 
     const [loading, setLoading] = useState(false);
@@ -13,18 +13,18 @@ export default function FacesGallery() {
 
         const fetchAll = async () => {
             try {
-                const [filesRes, peopleRes] = await Promise.all([
-                    fetch("/api/people"),
-                    fetch("/api/person"),
+                const [filesRes] = await Promise.all([
+                    fetch("/api/people")
+                    // fetch("/api/person"),
                 ]);
 
-                const [filesData, peopleData] = await Promise.all([
+                const [filesData] = await Promise.all([
                     filesRes.json(),
-                    peopleRes.json(),
+                    // peopleRes.json(),
                 ]);
 
                 setFiles(Array.isArray(filesData) ? filesData : []);
-                setPeople(Array.isArray(peopleData) ? peopleData : []);
+                // setPeople(Array.isArray(peopleData) ? peopleData : []);
             } catch (err) {
                 console.error(err);
                 addToast({
@@ -49,20 +49,16 @@ export default function FacesGallery() {
     }
 
     return (
-        <>
-            <div className="grid grid-cols-8 gap-2">
-                {files.map((file, idx) => {
-                    const person = people.find(p => p.imageName === file.originalName);
-                    return (
-                        <FaceComponent
-                            key={idx}
-                            url={file.url}
-                            originalName={file.originalName}
-                            personName={person?.personName || ""}
-                        />
-                    );
-                })}
+        <div className="grid grid-cols-8 gap-2">
+        {files.map((cluster, idx) => (
+            <div key={idx} className="flex flex-col items-center">
+                <FaceComponent
+                    cropped_image={cluster.cropped_face}
+                    originalName={cluster.sample_image}
+                    personName=""
+                ></FaceComponent>
             </div>
-        </>
+        ))}
+    </div>
     );
 }
