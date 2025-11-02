@@ -14,6 +14,7 @@ import cv2
 import datetime
 import uuid
 from dotenv import load_dotenv
+from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import cosine_similarity
 
 load_dotenv()
@@ -205,13 +206,15 @@ def recluster_all_faces(bucket_name, min_cluster_size=2):
         
         # HDBSCAN
         embeddings = np.array([point.vector for point in results])
-        
-        clusterer = hdbscan.HDBSCAN(
-            min_cluster_size=min_cluster_size,
+        print("dbscan")
+        clusterer = DBSCAN(
+            eps=0.4,
             min_samples=1,
-            cluster_selection_epsilon=0.0,
             metric='euclidean',
-            cluster_selection_method='eom'
+
+            # min_cluster_size=min_cluster_size,
+            # cluster_selection_epsilon=0.0,
+            # cluster_selection_method='eom'
         )
         cluster_labels = clusterer.fit_predict(embeddings)
         
@@ -324,16 +327,17 @@ def cluster_images(bucket_name, min_cluster_size=2, tolerance=0.6):
         
         # 4. PRVI PUT: Klasterizuj sve
         if is_first_run:
-            print("INITIAL CLUSTERING")
+            print("INITIAL CLUSTERING DBSCAN")
             
             embeddings = np.array([face['embedding'] for face in new_faces])
             
-            clusterer = hdbscan.HDBSCAN(
-                min_cluster_size=min_cluster_size,
+            clusterer = DBSCAN(
+                eps=0.4,
+                # min_cluster_size=min_cluster_size,
                 metric='euclidean',
-                cluster_selection_method='eom',
-                min_samples=1,
-                cluster_selection_epsilon=0.0,
+                # cluster_selection_method='eom',
+                min_samples=1
+                # cluster_selection_epsilon=0.0,
             )
             cluster_labels = clusterer.fit_predict(embeddings)
             
