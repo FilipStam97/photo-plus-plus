@@ -58,6 +58,7 @@ export default function FaceComponent({
     <div
       className="relative w-32 h-32 overflow-hidden border border-gray-300 shadow-md"
       onClick={() => router.push(`/people/${cluster_id}`)}
+      style={{ cursor: "pointer" }}
     >
       {/* <img
                 src={cropped_image}
