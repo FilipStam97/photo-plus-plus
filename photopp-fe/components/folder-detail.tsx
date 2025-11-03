@@ -22,6 +22,9 @@ export default function FolderDetail({
 }: FolderDetailProps) {
   return (
     <div className="p-4 w-full ">
+      <Button onClick={onBack} className="flex-shrink-0 mb-6">
+        Back to Albums
+      </Button>
       <div
         className="flex items-center justify-between w-full mb-6 gap-4"
         style={{ alignItems: "flex-start" }}
@@ -32,10 +35,6 @@ export default function FolderDetail({
             setTriggerFetch={setTriggerFetch}
           />
         </div>
-
-        <Button onClick={onBack} className="flex-shrink-0">
-          Back to Albums
-        </Button>
       </div>
     </div>
   );

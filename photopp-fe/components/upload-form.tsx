@@ -34,20 +34,20 @@ export default function UploadForm({
     );
     if (incoming.length === 0) return;
 
-    const shortFileProps = incoming.map((f) => ({
-      originalFileName: f.name,
-      fileSize: f.size,
-    }));
-    const error = validateFiles(shortFileProps, MAX_FILE_SIZE_NEXTJS_ROUTE);
-    if (error) {
-      addToast({
-        title: "Invalid files",
-        description: error,
-        timeout: 3500,
-        color: "danger",
-      });
-      return;
-    }
+    // const shortFileProps = incoming.map((f) => ({
+    //   originalFileName: f.name,
+    //   fileSize: f.size,
+    // }));
+    // const error = validateFiles(shortFileProps, MAX_FILE_SIZE_NEXTJS_ROUTE);
+    // if (error) {
+    //   addToast({
+    //     title: "Invalid files",
+    //     description: error,
+    //     timeout: 3500,
+    //     color: "danger",
+    //   });
+    //   return;
+    // }
     setFiles((prev) => {
       const key = (f: File) => `${f.name}-${f.size}`;
       const existing = new Set(prev.map(key));
@@ -106,7 +106,7 @@ export default function UploadForm({
         originalFileName: file.name,
         fileSize: file.size,
       }));
-      console.log(shortFileProps)
+      console.log(shortFileProps);
       const presignedUrls = await getPresignedUrls(shortFileProps, folderName);
       await handleUpload(files, presignedUrls, () => {
         addToast({
