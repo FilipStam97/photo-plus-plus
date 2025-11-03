@@ -4,8 +4,6 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue
 import numpy as np
 import face_recognition
-import hdbscan
-
 from PIL import Image
 import io
 import os
@@ -208,7 +206,7 @@ def recluster_all_faces(bucket_name, min_cluster_size=2):
         embeddings = np.array([point.vector for point in results])
         print("dbscan")
         clusterer = DBSCAN(
-            eps=0.4,
+            eps=0.5,
             min_samples=1,
             metric='euclidean',
 
@@ -332,7 +330,7 @@ def cluster_images(bucket_name, min_cluster_size=2, tolerance=0.6):
             embeddings = np.array([face['embedding'] for face in new_faces])
             
             clusterer = DBSCAN(
-                eps=0.4,
+                eps=0.5,
                 # min_cluster_size=min_cluster_size,
                 metric='euclidean',
                 # cluster_selection_method='eom',

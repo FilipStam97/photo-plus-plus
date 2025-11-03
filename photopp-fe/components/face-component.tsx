@@ -71,26 +71,7 @@ export default function FaceComponent({
         className="object-cover w-full h-full"
       />
 
-      <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 flex items-center gap-1">
-        <input
-          type="text"
-          placeholder="Enter name"
-          value={name}
-          onChange={(e) => {
-            setName(e.target.value);
-            setShowTick(e.target.value.length > 0);
-          }}
-          className="px-2 py-1 bg-white/80 rounded text-sm w-24 text-center focus:outline-none"
-        />
-        {showTick && (
-          <button
-            onClick={handleSave}
-            className="font-bold hover:text-green-800"
-          >
-            ✔
-          </button>
-        )}
-      </div>
+      
     </div>
   );
 }
